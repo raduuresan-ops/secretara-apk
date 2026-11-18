@@ -19,19 +19,35 @@ jobs:
           java-version: 21
       - run: npm install
       - run: |
+          mkdir -p ~/.android
+          cp debug.keystore ~/.android/debug.keystore
+      - run: |
           mkdir -p www
           cp index.html www/index.html
       - run: npx cap add android
-      - run: python3 build_android.py
-      - run: npx cap sync android
-      - run: |
+      - name: Build cu widget si scurtatura
+        id: full
+        continue-on-error: true
+        run: |
+          python3 build_android.py --extras
+          npx cap sync android
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+      - name: Build de rezerva (fara widget)
+        if: steps.full.outcome == 'failure'
+        run: |
+          rm -rf android
+          npx cap add android
+          python3 build_android.py
+          npx cap sync android
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Secretara build ${{ github.run_number }}
+          name: Secretara build ${{ github.run_number }} ${{ steps.full.outcome == 'success' && '(cu widget)' || '(fara widget)' }}
           files: android/app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
         with:
