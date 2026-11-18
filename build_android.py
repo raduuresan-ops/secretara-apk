@@ -30,6 +30,32 @@ if "android.speech.RecognitionService" not in s:
 if "<application" not in s:
     sys.exit("Manifest fara <application>")
 s = s.replace("<application", block + "    <application", 1)
+
+EXTRAS = "--extras" in sys.argv
+if EXTRAS:
+    # deep link secretara://dictate + scurtatura (apasare lunga pe icoana) in MainActivity
+    if 'android:scheme="secretara"' not in s:
+        filt = (
+            '        <intent-filter>\n'
+            '            <action android:name="android.intent.action.VIEW" />\n'
+            '            <category android:name="android.intent.category.DEFAULT" />\n'
+            '            <category android:name="android.intent.category.BROWSABLE" />\n'
+            '            <data android:scheme="secretara" android:host="dictate" />\n'
+            '        </intent-filter>\n'
+            '        <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />\n'
+        )
+        if "</activity>" not in s:
+            sys.exit("Manifest fara </activity>")
+        s = s.replace("</activity>", filt + "        </activity>", 1)
+    # receiver pentru widget
+    if "DictateWidget" not in s:
+        rec = (
+            '        <receiver android:name=".DictateWidget" android:exported="true">\n'
+            '            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>\n'
+            '            <meta-data android:name="android.appwidget.provider" android:resource="@xml/dictate_widget_info" />\n'
+            '        </receiver>\n'
+        )
+        s = s.replace("</application>", rec + "    </application>", 1)
 manifest.write_text(s, encoding="utf8")
 
 # sunet de alarma: 15 secunde, 3 bipuri pe secunda
@@ -63,3 +89,74 @@ dr.mkdir(parents=True, exist_ok=True)
 </vector>
 ''', encoding="utf8")
 print("build_android.py: manifest, alarm.wav si icon adaugate")
+
+if EXTRAS:
+    import re
+    acts = list(main.glob("java/**/MainActivity.java"))
+    if not acts:
+        sys.exit("Nu gasesc MainActivity.java")
+    pkg = re.search(r"package\s+([\w.]+);", acts[0].read_text(encoding="utf8")).group(1)
+    (acts[0].parent / "DictateWidget.java").write_text(f"""package {pkg};
+
+import android.app.PendingIntent;
+import android.appwidget.AppWidgetManager;
+import android.appwidget.AppWidgetProvider;
+import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.widget.RemoteViews;
+
+public class DictateWidget extends AppWidgetProvider {{
+    @Override
+    public void onUpdate(Context ctx, AppWidgetManager mgr, int[] ids) {{
+        for (int id : ids) {{
+            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("secretara://dictate"));
+            i.setPackage(ctx.getPackageName());
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            PendingIntent pi = PendingIntent.getActivity(ctx, 0, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget_dictate);
+            v.setOnClickPendingIntent(R.id.widget_root, pi);
+            mgr.updateAppWidget(id, v);
+        }}
+    }}
+}}
+""", encoding="utf8")
+    for d in ("xml", "layout", "values", "drawable"):
+        (main / "res" / d).mkdir(parents=True, exist_ok=True)
+    (main / "res/xml/dictate_widget_info.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp" android:minHeight="40dp" android:updatePeriodMillis="0"
+    android:initialLayout="@layout/widget_dictate" android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen" />
+''', encoding="utf8")
+    (main / "res/layout/widget_dictate.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:gravity="center" android:padding="8dp" android:background="@drawable/widget_bg">
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:text="@string/sc_dictate_widget" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold" />
+</LinearLayout>
+''', encoding="utf8")
+    (main / "res/drawable/widget_bg.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#4F8CFF" />
+    <corners android:radius="18dp" />
+</shape>
+''', encoding="utf8")
+    (main / "res/values/secretara_extras.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sc_dictate">Dictează</string>
+    <string name="sc_dictate_long">Dictează un memento</string>
+    <string name="sc_dictate_widget">🎤  Dictează</string>
+</resources>
+''', encoding="utf8")
+    (main / "res/xml/shortcuts.xml").write_text(f'''<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="dictate" android:enabled="true" android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/sc_dictate" android:shortcutLongLabel="@string/sc_dictate_long">
+        <intent android:action="android.intent.action.VIEW" android:data="secretara://dictate"
+            android:targetPackage="{pkg}" android:targetClass="{pkg}.MainActivity" />
+    </shortcut>
+</shortcuts>
+''', encoding="utf8")
+    print("build_android.py: widget + scurtatura adaugate (" + pkg + ")")
