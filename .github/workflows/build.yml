@@ -20,7 +20,7 @@ jobs:
       - run: npm install
       - run: |
           mkdir -p ~/.android
-          cp debug.keystore ~/.android/debug.keystore
+          if [ -f debug.keystore ]; then cp debug.keystore ~/.android/debug.keystore; else echo "debug.keystore lipseste - semnatura temporara"; fi
       - run: |
           mkdir -p www
           cp index.html www/index.html
