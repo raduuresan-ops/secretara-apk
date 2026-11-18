@@ -13,11 +13,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: package.json
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
-      - run: npm install
+      # pastreaza Gradle intre build-uri: build-urile urmatoare sunt mult mai rapide
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm install --no-audit --no-fund
       - run: |
           mkdir -p ~/.android
           if [ -f debug.keystore ]; then cp debug.keystore ~/.android/debug.keystore; else echo "debug.keystore lipseste - semnatura temporara"; fi
@@ -25,7 +29,7 @@ jobs:
           mkdir -p www
           cp index.html www/index.html
       - run: npx cap add android
-      - name: Build cu widget si scurtatura
+      - name: Build cu widget, scurtatura si romana offline
         id: full
         continue-on-error: true
         run: |
@@ -37,6 +41,7 @@ jobs:
       - name: Build de rezerva (fara widget)
         if: steps.full.outcome == 'failure'
         run: |
+          echo "::warning::Build-ul complet a esuat - APK-ul NU are widget, scurtatura si romana offline. Vezi pasul 'Build cu widget...' pentru eroare."
           rm -rf android
           npx cap add android
           python3 build_android.py
@@ -47,7 +52,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Secretara build ${{ github.run_number }} ${{ steps.full.outcome == 'success' && '(cu widget)' || '(fara widget)' }}
+          name: Secretara build ${{ github.run_number }} ${{ steps.full.outcome == 'success' && '(complet)' || '(fara widget)' }}
           files: android/app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
         with:
