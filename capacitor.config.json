@@ -1,0 +1,14 @@
+{
+  "appId": "ro.secretara.app",
+  "appName": "Secretara",
+  "webDir": "www",
+  "android": {
+    "adjustMarginsForEdgeToEdge": "auto"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_icon",
+      "iconColor": "#4F8CFF"
+    }
+  }
+}
