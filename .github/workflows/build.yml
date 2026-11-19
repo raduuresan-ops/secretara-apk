@@ -22,9 +22,10 @@ jobs:
       # pastreaza Gradle intre build-uri: build-urile urmatoare sunt mult mai rapide
       - uses: gradle/actions/setup-gradle@v4
       - run: npm install --no-audit --no-fund
+      # aceeasi semnatura la fiecare build = update peste aplicatia existenta, fara pierderea datelor
       - run: |
           mkdir -p ~/.android
-          if [ -f debug.keystore ]; then cp debug.keystore ~/.android/debug.keystore; else echo "debug.keystore lipseste - semnatura temporara"; fi
+          if [ -f debug.keystore ]; then cp debug.keystore ~/.android/debug.keystore; else echo "::error::debug.keystore lipseste - APK-ul ar avea alta semnatura, nu s-ar instala peste cel vechi si ai pierde datele. Urca debug.keystore in repo."; exit 1; fi
       - run: |
           mkdir -p www
           cp index.html www/index.html
