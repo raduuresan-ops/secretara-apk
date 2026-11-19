@@ -2089,7 +2089,7 @@ function renderSettings() {
   byId("autoBkInfo").textContent = !isNative ? "" : lm ? "Ultima copie automată: " + new Date(lm).toLocaleString("ro-RO") : "Copia automată se face la prima modificare.";
   byId("verInfo").textContent = "Secretara " + APP_VER;
 }
-const APP_VER = "v3.3 · 19.11.2026";
+const APP_VER = "v3.4 · 19.11.2026";
 async function sndChanged() {
   lsSetRaw("sndAlarm", byId("sndAlarm").value);
   lsSetRaw("sndLen", byId("sndLen").value);

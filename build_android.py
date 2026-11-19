@@ -64,6 +64,35 @@ if EXTRAS:
         s = s.replace("</application>", rec + "    </application>", 1)
 manifest.write_text(s, encoding="utf8")
 
+# ---------- semnatura FIXA: APK-ul se semneaza mereu cu debug.keystore din repo ----------
+# Fara asta, Gradle poate folosi o cheie temporara (alta la fiecare build) si telefonul refuza update-ul
+# („App not installed”). Daca debug.keystore lipseste, oprim build-ul.
+ks = pathlib.Path("debug.keystore")
+if not ks.exists():
+    sys.exit("EROARE: debug.keystore lipseste din radacina repo-ului. Fara el APK-ul nu se poate instala peste cel existent.")
+gradle = pathlib.Path("android/app/build.gradle")
+if not gradle.exists():
+    sys.exit("Nu gasesc " + str(gradle))
+g = gradle.read_text(encoding="utf8")
+if "secretara-semnatura" not in g:
+    sign = (
+        "android {\n"
+        "    // secretara-semnatura: aceeasi cheie la fiecare build = update fara pierderea datelor\n"
+        "    signingConfigs {\n"
+        "        debug {\n"
+        "            storeFile rootProject.file('../debug.keystore')\n"
+        "            storePassword 'android'\n"
+        "            keyAlias 'androiddebugkey'\n"
+        "            keyPassword 'android'\n"
+        "        }\n"
+        "    }\n"
+    )
+    if not re.search(r"^android\s*\{", g, re.M):
+        sys.exit("build.gradle fara blocul android {")
+    g = re.sub(r"^android\s*\{\n?", sign, g, count=1, flags=re.M)
+    gradle.write_text(g, encoding="utf8")
+print("build_android.py: semnatura fixa din debug.keystore")
+
 # ---------- sunete (aceleasi formule ca sndSample() din index.html, pentru previzualizare) ----------
 # al_<sunet>_<5|15|30>.wav pentru alarme, mem_<sunet>.wav pentru memento-uri, alarm.wav = vechiul canal (compatibilitate)
 TAU = 2 * math.pi
