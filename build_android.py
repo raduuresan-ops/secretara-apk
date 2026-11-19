@@ -29,6 +29,9 @@ for p in perms:
         block += "    " + p + "\n"
 if "android.speech.RecognitionService" not in s:
     block += "    " + queries + "\n"
+# vocea telefonului (pluginul text-to-speech): pe Android 11+ aplicatia trebuie sa poata vedea motorul TTS
+if "android.intent.action.TTS_SERVICE" not in s:
+    block += '    <queries><intent><action android:name="android.intent.action.TTS_SERVICE" /></intent></queries>\n'
 
 if "<application" not in s:
     sys.exit("Manifest fara <application>")
