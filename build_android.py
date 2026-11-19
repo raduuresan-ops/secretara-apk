@@ -17,6 +17,8 @@ perms = [
     '<uses-permission android:name="android.permission.VIBRATE" />',
     '<uses-permission android:name="android.permission.WAKE_LOCK" />',
     '<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />',
+    # copia automata in Documents/Secretara pe Android 10 si mai vechi (pe 11+ nu e nevoie)
+    '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />',
 ]
 queries = ('<queries><intent><action android:name="android.speech.RecognitionService" /></intent></queries>')
 
@@ -59,26 +61,86 @@ if EXTRAS:
         s = s.replace("</application>", rec + "    </application>", 1)
 manifest.write_text(s, encoding="utf8")
 
-# sunet de alarma: 15 secunde, 3 bipuri pe secunda (11 kHz: fisier de 2x mai mic, sunet practic identic)
+# ---------- sunete (aceleasi formule ca sndSample() din index.html, pentru previzualizare) ----------
+# al_<sunet>_<5|15|30>.wav pentru alarme, mem_<sunet>.wav pentru memento-uri, alarm.wav = vechiul canal (compatibilitate)
+TAU = 2 * math.pi
+S = math.sin
+
+def seg(x):
+    return min(1.0, x * 12, (1 - x) * 12)
+
+def sample(kind, t):
+    if kind == "clasic":
+        ph = t % 1.0
+        if ph < 0.15: f, a0, a1 = 880, 0.0, 0.15
+        elif 0.25 <= ph < 0.40: f, a0, a1 = 1175, 0.25, 0.40
+        elif 0.50 <= ph < 0.65: f, a0, a1 = 880, 0.50, 0.65
+        else: return 0.0
+        return 0.7 * seg((ph - a0) / (a1 - a0)) * S(TAU * f * t)
+    if kind == "digital":
+        ph = t % 1.0
+        for k in range(4):
+            s = k * 0.12
+            if s <= ph < s + 0.07:
+                x = (ph - s) / 0.07
+                return 0.6 * min(1.0, x * 10, (1 - x) * 10) * S(TAU * 1500 * t)
+        return 0.0
+    if kind == "clopotel":
+        ph = t % 1.6
+        v = 0.0
+        for s, f in ((0, 880), (0.45, 660)):
+            if ph >= s:
+                d = ph - s
+                v += min(1.0, d * 200) * math.exp(-d * 4) * (S(TAU * f * t) + 0.35 * S(TAU * 2 * f * t))
+        return 0.45 * v
+    if kind == "sirena":
+        return 0.55 * S(TAU * (975 * t - (325 / TAU) * S(TAU * t)))
+    if kind == "bland":
+        ph = t % 2.0
+        v = 0.0
+        for s, f in ((0, 523), (0.5, 659), (1.0, 784)):
+            if s <= ph < s + 0.5:
+                v = S(math.pi * (ph - s) / 0.5) * S(TAU * f * t)
+        return min(0.8, 0.25 + 0.055 * t) * v
+    if kind == "ding":
+        v = 0.0
+        for s, f in ((0, 988), (0.15, 1319)):
+            if t >= s:
+                d = t - s
+                v += min(1.0, d * 200) * math.exp(-d * 6) * (S(TAU * f * t) + 0.3 * S(TAU * 2 * f * t))
+        return 0.4 * v
+    if kind == "bip":
+        for s in (0, 0.18):
+            if s <= t < s + 0.1:
+                x = (t - s) / 0.1
+                return 0.6 * min(1.0, x * 10, (1 - x) * 10) * S(TAU * 1000 * t)
+        return 0.0
+    return 0.0
+
+def write_wav(path, sr, vals):
+    n = len(vals)
+    fade = int(sr * 0.05)
+    frames = bytearray()
+    for i, v in enumerate(vals):
+        if i > n - fade:
+            v *= (n - i) / fade
+        v = max(-1.0, min(1.0, v))
+        frames += struct.pack("<h", int(v * 32767))
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr); w.writeframes(bytes(frames))
+
 raw = main / "res" / "raw"
 raw.mkdir(parents=True, exist_ok=True)
-sr, secs = 11025, 15
-frames = bytearray()
-for i in range(sr * secs):
-    t = i / sr
-    ph = t % 1.0
-    if ph < 0.15:   f, a0, a1 = 880, 0.0, 0.15
-    elif 0.25 <= ph < 0.40: f, a0, a1 = 1175, 0.25, 0.40
-    elif 0.50 <= ph < 0.65: f, a0, a1 = 880, 0.50, 0.65
-    else: f = 0; a0 = a1 = 0
-    v = 0.0
-    if f:
-        x = (ph - a0) / (a1 - a0)
-        env = min(1.0, x * 12, (1 - x) * 12)
-        v = 0.7 * env * math.sin(2 * math.pi * f * t)
-    frames += struct.pack("<h", int(v * 32767))
-with wave.open(str(raw / "alarm.wav"), "wb") as w:
-    w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr); w.writeframes(bytes(frames))
+# 8 kHz: fisiere mici; toate frecventele folosite sunt sub 4 kHz, deci sunetul ramane curat
+SR = 8000
+for kind in ("clasic", "digital", "clopotel", "sirena", "bland"):
+    full = [sample(kind, i / SR) for i in range(SR * 30)]
+    for secs in (5, 15, 30):
+        write_wav(raw / f"al_{kind}_{secs}.wav", SR, full[: SR * secs])
+write_wav(raw / "mem_ding.wav", SR, [sample("ding", i / SR) for i in range(int(SR * 1.2))])
+write_wav(raw / "mem_bip.wav", SR, [sample("bip", i / SR) for i in range(int(SR * 0.5))])
+# vechiul canal „alarms_v1” foloseste alarm.wav: il pastram pentru alarmele programate cu versiunea veche
+write_wav(raw / "alarm.wav", 11025, [sample("clasic", i / 11025) for i in range(11025 * 15)])
 
 # iconita mica de notificare (clopotel alb)
 dr = main / "res" / "drawable"
@@ -89,7 +151,7 @@ dr.mkdir(parents=True, exist_ok=True)
       android:pathData="M12,22c1.1,0 2,-0.9 2,-2h-4c0,1.1 0.89,2 2,2zM18,16v-5c0,-3.07 -1.64,-5.64 -4.5,-6.32V4c0,-0.83 -0.67,-1.5 -1.5,-1.5s-1.5,0.67 -1.5,1.5v0.68C7.63,5.36 6,7.92 6,11v5l-2,2v1h16v-1l-2,-2z"/>
 </vector>
 ''', encoding="utf8")
-print("build_android.py: manifest, alarm.wav si icon adaugate")
+print("build_android.py: manifest, sunete (5 alarme x 3 durate + 2 memento) si icon adaugate")
 
 if not EXTRAS:
     sys.exit(0)
@@ -131,6 +193,7 @@ public class DictateWidget extends AppWidgetProvider {
 (src / "OfflineSpeechPlugin.java").write_text("""package __PKG__;
 
 import android.annotation.TargetApi;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Handler;
@@ -208,6 +271,8 @@ public class OfflineSpeechPlugin extends Plugin {
                     r.put("installed", has(s.getInstalledOnDeviceLanguages(), lang));
                     r.put("pending", has(s.getPendingOnDeviceLanguages(), lang));
                     r.put("available", has(s.getSupportedOnDeviceLanguages(), lang));
+                    List<String> sup = s.getSupportedOnDeviceLanguages();
+                    if (sup != null) r.put("langs", String.join(", ", sup));
                     sr.destroy();
                     call.resolve(r);
                 }
@@ -223,6 +288,32 @@ public class OfflineSpeechPlugin extends Plugin {
         } catch (Exception e) {
             call.reject(msg(e));
         }
+    }
+
+    // deschide descarcarea limbilor offline din aplicatia Google (sau setarile de intrare vocala)
+    @PluginMethod
+    public void openSettings(final PluginCall call) {
+        Intent[] list = {
+            new Intent().setComponent(new ComponentName("com.google.android.googlequicksearchbox",
+                "com.google.android.voicesearch.greco3.languagepack.InstallActivity")),
+            new Intent("android.settings.VOICE_INPUT_SETTINGS"),
+            new Intent(android.provider.Settings.ACTION_SETTINGS)
+        };
+        String[] names = {"google", "voice_input", "settings"};
+        for (int k = 0; k < list.length; k++) {
+            try {
+                Intent i = list[k];
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(i);
+                JSObject o = new JSObject();
+                o.put("opened", names[k]);
+                call.resolve(o);
+                return;
+            } catch (Exception e) {
+                // incercam urmatoarea varianta
+            }
+        }
+        call.reject("Nu am putut deschide setarile");
     }
 
     @PluginMethod

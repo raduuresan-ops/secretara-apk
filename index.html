@@ -47,7 +47,18 @@ textarea{min-height:110px;resize:vertical}
 .calGrid .cd.e{background:none;cursor:default}
 .calGrid .cd.today{outline:2px solid var(--accent)}
 .calGrid .cd.sel{background:#34406a}
-.calGrid .cd small{display:block;color:var(--ok);font-size:10px}
+.calGrid .cd small{display:block;color:var(--ok);font-size:10px;line-height:1.25}
+.calGrid .cd.act{background:#2a3550}
+.calGrid .cd.past.act{background:#2b4034}
+.calGrid .cd.past.act small{color:#bfe8cc}
+.calGrid .cd.past{color:#c3c9d6}
+.calGrid .cd.sel{background:#4a5a94 !important;color:#fff}
+.seg{display:flex;gap:4px;margin-bottom:6px}
+.seg button{flex:1 1 0;margin:0;background:var(--item);padding:8px 2px;font-size:12px}
+.seg button.on{background:var(--accent)}
+.dayHdr{margin:14px 0 2px;font-size:13px;color:var(--muted);border-bottom:1px solid #2f3546;padding-bottom:3px}
+.lbl{display:block;margin-top:10px;font-size:13px;color:var(--muted)}
+.tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:6px;background:#3a4152;margin-left:4px}
 .calHint{font-size:13px;color:var(--muted)}
 .okbox{background:#24402f}
 .warnbox{background:#4a3a1f}
@@ -115,10 +126,7 @@ details summary{cursor:pointer;color:var(--muted);margin-top:14px}
   <section class="card view" id="v-mem" hidden>
     <h2>⏰ Memento-uri și alarme programate</h2>
     <div id="memList"></div>
-    <details id="memDoneBox">
-      <summary>✔ Făcute (<span id="memDoneCount">0</span>)</summary>
-      <div id="memDone"></div>
-    </details>
+    <p class="calHint" style="margin-top:12px;">Cele bifate ✔ Gata se mută în 📜 Istoric (Memento-uri / Alarme).</p>
   </section>
 
   <!-- CALENDAR -->
@@ -154,7 +162,13 @@ details summary{cursor:pointer;color:var(--muted);margin-top:14px}
 
   <!-- ISTORIC -->
   <section class="card view" id="v-hist" hidden>
-    <h2>📜 Istoric (sarcini terminate)</h2>
+    <h2>📜 Istoric</h2>
+    <div class="seg" id="histSeg">
+      <button data-h="tasks">📝 Sarcini <span class="badge" id="hcTasks"></span></button>
+      <button data-h="popup">🔔 Memento-uri <span class="badge" id="hcMem"></span></button>
+      <button data-h="alarm">⏰ Alarme <span class="badge" id="hcAl"></span></button>
+    </div>
+    <input id="histSearch" placeholder="🔎 Caută în istoric…" />
     <div id="historyList"></div>
   </section>
 
@@ -180,20 +194,49 @@ details summary{cursor:pointer;color:var(--muted);margin-top:14px}
     <p id="setInfo" class="calHint"></p>
     <button onclick="settingsCheck()">🔐 Verifică / cere permisiuni</button>
     <button onclick="testAlarm()">⏰ Test alarmă (peste 15 secunde)</button>
-    <button id="btnTts" onclick="toggleTts()"></button>
     <button id="btnSnap" onclick="toggleSnap()"></button>
 
     <div class="item" style="margin-top:14px;">
+      <b>🔊 Sunete și confirmare</b>
+      <label class="lbl" for="sndAlarm">Sunet alarmă</label>
+      <select id="sndAlarm" onchange="sndChanged()"></select>
+      <label class="lbl" for="sndLen">Cât sună alarma</label>
+      <select id="sndLen" onchange="sndChanged()">
+        <option value="5">5 secunde</option>
+        <option value="15">15 secunde</option>
+        <option value="30">30 secunde</option>
+      </select>
+      <button onclick="previewAlarm()">▶️ Ascultă alarma</button>
+      <label class="lbl" for="sndMemo">Sunet memento</label>
+      <select id="sndMemo" onchange="sndChanged()"></select>
+      <button onclick="previewMemo()">▶️ Ascultă memento</button>
+      <label class="lbl" for="confMode">Confirmare când salvezi un memento / o alarmă</label>
+      <select id="confMode" onchange="confChanged()">
+        <option value="both">🔔 Sunet scurt + 🗣️ voce</option>
+        <option value="sound">🔔 Doar sunet scurt</option>
+        <option value="voice">🗣️ Doar voce</option>
+        <option value="none">🔇 Fără (doar mesajul pe ecran)</option>
+      </select>
+      <button onclick="confirmFx(true)">▶️ Ascultă confirmarea</button>
+      <label class="lbl" for="defTime">Ora folosită când nu spui ora (ex. „vineri alarmă …”)</label>
+      <input id="defTime" type="time" onchange="defTimeChanged()" />
+      <p id="sndInfo" class="calHint"></p>
+    </div>
+
+    <div class="item" style="margin-top:14px;">
       <b>🌐 Româna offline (dictare fără internet)</b>
-      <p class="calHint">Descarcă pachetul de limbă română pentru recunoașterea vocală direct pe telefon. Cu el, dictarea merge și fără internet. Necesită Android 13 sau mai nou.</p>
+      <p class="calHint">Descarcă pachetul de limbă română pentru recunoașterea vocală direct pe telefon. Cu el, dictarea merge și fără internet. Necesită Android 13 sau mai nou. Dacă descărcarea directă nu merge, folosește „Setări voce Google” → Recunoaștere vocală offline → Română.</p>
       <button onclick="offlineCheck()">🔍 Verifică</button>
       <button class="doneBtn" onclick="offlineDownload()">📥 Descarcă româna offline</button>
+      <button onclick="offlineSettings()">⚙️ Setări voce Google</button>
       <p id="offInfo" class="calHint"></p>
     </div>
 
     <div class="item" style="margin-top:14px;">
       <b>💾 Backup</b>
-      <p class="calHint">Creează un fișier cu toate datele (sarcini, memento-uri, dicționar) și îl trimiți în Drive, e-mail sau WhatsApp. Îl poți restaura după reinstalare.</p>
+      <p class="calHint">Creează un fișier cu toate datele (sarcini, memento-uri, istoric, dicționar, setări) și îl trimiți în Drive, e-mail sau WhatsApp. Îl poți restaura după reinstalare.</p>
+      <p class="calHint">🛟 În plus, aplicația salvează automat o copie la fiecare modificare (în memoria aplicației și în <b>Documents/Secretara/secretara-autobackup.json</b>). Dacă după un update datele lipsesc, sunt restaurate automat la pornire.</p>
+      <p id="autoBkInfo" class="calHint"></p>
       <button class="doneBtn" onclick="doBackup()">📤 Backup (trimite fișier)</button>
       <button onclick="byId('fileImport').click()">📥 Restaurează din fișier</button>
       <input type="file" id="fileImport" accept=".json,application/json" style="display:none" onchange="importFile(event)" />
@@ -215,7 +258,9 @@ details summary{cursor:pointer;color:var(--muted);margin-top:14px}
       </ol>
       <b>🎙️ Recunoaștere vocală Google</b>
       <p class="calHint">Setări → Aplicații → Alege aplicațiile implicite → Aplicație asistent digital → Intrare vocală → Google<br><span class="en">Settings → Apps → Choose default apps → Digital assistant app → Voice input → Google</span></p>
+      <p class="calHint">Dacă apeși 🎤 și nu apare text: așteaptă mesajul „🎙️ Ascult… vorbește”, apoi vorbește. Aplicația repornește singură microfonul dacă se blochează. Dacă tot nu merge, verifică să fie actualizată aplicația Google și să aibă permisiunea Microfon.</p>
     </div>
+    <p class="calHint" id="verInfo" style="text-align:center;"></p>
   </section>
 
   <!-- AJUTOR -->
@@ -236,6 +281,8 @@ details summary{cursor:pointer;color:var(--muted);margin-top:14px}
       <li><b>📝 Ca sarcină</b>: intră în lista de sarcini, fără alarmă.</li>
       <li><b>🔔 Ca memento</b>: notificare la data și ora spuse.</li>
       <li><b>⏰ Ca alarmă</b>: sună și vibrează la data și ora spuse.</li>
+      <li>Dacă spui ziua dar nu și ora (ex. „vineri alarmă plată factură”), se pune la <b>ora implicită 10:00</b> (o poți schimba din ⚙️ Setări).</li>
+      <li>După salvare auzi un sunet scurt de confirmare și apar butoane rapide: <b>+10 min</b>, <b>+1 oră</b>, <b>Mâine</b>, schimbă alarmă ↔ memento, <b>Anulează</b>.</li>
       <li>Dacă nu se găsește data/ora, textul rămâne în căsuță și poți alege data din Calendar.</li>
     </ul>
 
@@ -255,16 +302,17 @@ details summary{cursor:pointer;color:var(--muted);margin-top:14px}
     <h3>🗂️ Taburile</h3>
     <ul>
       <li><b>📝 Sarcini</b>: ✔ Gata (trece în Istoric), ✏️ Edit, 📤 Trimite (WhatsApp etc.), Șterge. Căutare și export Excel/PDF.</li>
-      <li><b>⏰ Memento</b>: tot ce urmează, plus cele făcute (secțiunea „Făcute”).</li>
-      <li><b>📅 Calendar</b>: vezi pe zile și adaugi manual memento-uri, inclusiv repetitive.</li>
-      <li><b>📜 Istoric</b>: sarcinile terminate; le poți readuce (↩), edita sau șterge.</li>
+      <li><b>⏰ Memento</b>: doar ce urmează. Ce bifezi ✔ Gata trece în Istoric.</li>
+      <li><b>📅 Calendar</b>: zilele cu activitate sunt colorate (verde = zile trecute, albastru = programate), cu numărul de ⏰ alarme, 🔔 memento-uri și ✔ sarcini terminate. Adaugi manual memento-uri, inclusiv repetitive.</li>
+      <li><b>📜 Istoric</b>: separat pe <b>Sarcini</b>, <b>Memento-uri</b> și <b>Alarme</b>, grupat pe zile, cu căutare. Le poți readuce / reprograma sau șterge.</li>
       <li><b>📖 Dicționar</b>: corecturi automate și termeni importanți (nume, firme).</li>
     </ul>
 
     <h3>🔔 Când sună</h3>
     <ul>
       <li>Din notificare sau din ecranul mare: <b>Gata</b>, <b>Amână 5 min</b> sau <b>Amână 1 oră</b>.</li>
-      <li>⏰ Alarmele sună lung și vibrează; 🔔 memento-urile sunt notificări normale.</li>
+      <li>⏰ Alarmele sună și vibrează; sunetul (5 variante) și durata (5 / 15 / 30 secunde) se aleg din ⚙️ Setări → Sunete. 🔔 Memento-urile sunt notificări normale, cu sunetul telefonului sau un „ding” scurt.</li>
+      <li>Alarmele care au sunat și nu le-ai bifat trec singure în Istoric după 12 ore (marcate „⌛ a sunat”).</li>
     </ul>
 
     <h3>🧠 Dicționar și învățare</h3>
@@ -279,7 +327,7 @@ details summary{cursor:pointer;color:var(--muted);margin-top:14px}
       <li><b>Verifică permisiuni</b>: microfon, notificări, alarme exacte.</li>
       <li><b>Test alarmă</b>: sună după 15 secunde; blochează ecranul ca să verifici.</li>
       <li><b>Româna offline</b>: dictare și fără internet (Android 13+).</li>
-      <li><b>Backup</b>: fă-l săptămânal; aplicația îți amintește după 7 zile.</li>
+      <li><b>Backup</b>: fă-l săptămânal; aplicația îți amintește după 7 zile. Pe lângă el există și o copie automată, restaurată singură dacă datele dispar după un update.</li>
       <li>Pașii pentru Samsung (în română și engleză) sunt în ⚙️ Setări.</li>
     </ul>
   </section>
@@ -483,7 +531,7 @@ function parseCommand(raw, now = new Date(), defaultBase = null) {
   if (relMs !== null) due = new Date(now.getTime() + relMs);
   else if (base || tm) {
     const d = base ? new Date(base) : new Date(today);
-    const t = tm || { h: 9, m: 0 };
+    const t = tm || defTimeHM();
     due = new Date(d.getFullYear(), d.getMonth(), d.getDate(), t.h, t.m, 0);
     if (!base && due <= now) due.setDate(due.getDate() + 1);
   }
@@ -507,7 +555,14 @@ function parseCommand(raw, now = new Date(), defaultBase = null) {
   let text = o.replace(/\s+/g, " ").trim().replace(/^[\s,.:;!?-]+|[\s,.:;!?-]+$/g, "");
   if (!text) text = type === "alarm" ? "Alarmă" : raw.trim();
   text = text.charAt(0).toUpperCase() + text.slice(1);
-  return { type, due, text, hasTime, byKeyword, repeat: repeat ? repeat.kind : null };
+  return { type, due, text, hasTime, byKeyword, repeat: repeat ? repeat.kind : null, defaultTime: !!(due && relMs === null && !tm) };
+}
+// ora implicită când spui doar ziua („vineri alarmă …”): 10:00, modificabilă din Setări
+function defTimeHM() {
+  let v = "10:00";
+  try { v = localStorage.getItem("defTime") || v; } catch (e) {}
+  const m = /^(\d{1,2}):(\d{2})$/.exec(v);
+  return m ? { h: +m[1], m: +m[2] } : { h: 10, m: 0 };
 }
 
 // ---------- Mai multe memento-uri într-o frază ----------
@@ -653,14 +708,75 @@ function flash(text, cls, kids) {
 // ---------- stocare ----------
 const arr = v => (Array.isArray(v) ? v : []);
 function lsGet(k, def) { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? def : v; } catch (e) { return def; } }
-function lsSet(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
+function lsSet(k, v) { localStorage.setItem(k, JSON.stringify(v)); scheduleMirror(); }
+function lsSetRaw(k, v) { localStorage.setItem(k, v); scheduleMirror(); }
 const tasksGet = () => arr(lsGet("tasks", [])), tasksSet = l => lsSet("tasks", l);
 const histGet = () => arr(lsGet("history", [])), histSet = l => lsSet("history", l);
 const remGet = () => arr(lsGet("reminders", [])), remSet = l => lsSet("reminders", l);
+const remHistGet = () => arr(lsGet("remHistory", [])), remHistSet = l => lsSet("remHistory", l);
 const dictGet = () => arr(lsGet("dict", [])), dictSet = l => lsSet("dict", l);
 const termGet = () => arr(lsGet("terms", [])), termSet = l => lsSet("terms", l);
 let idSeq = 0;
 const uid = () => Date.now() * 10 + (idSeq++ % 10);
+
+// ---------- copie automată în fișier: protejează datele la update / ștergerea memoriei WebView ----------
+const DATA_KEYS = ["tasks", "history", "reminders", "remHistory", "dict", "terms"];
+const SETTING_KEYS = ["snap", "tts", "sndAlarm", "sndLen", "sndMemo", "confMode", "defTime", "histSub", "lastBackup"];
+const MIRROR_FILES = [["secretara-date.json", "DATA"], ["Secretara/secretara-autobackup.json", "DOCUMENTS"]];
+// „proaspăt” = WebView-ul nu are nimic salvat (prima pornire sau date pierdute) → încercăm restaurarea automată
+const FRESH = !localStorage.getItem("dictSeeded") && !localStorage.getItem("tasks") && !localStorage.getItem("reminders");
+let mirrorT = null, mirrorBlocked = FRESH;
+function backupObj() {
+  const settings = {};
+  SETTING_KEYS.forEach(k => { const v = localStorage.getItem(k); if (v != null) settings[k] = v; });
+  return { v: 3, saved: Date.now(), tasks: tasksGet(), history: histGet(), reminders: remGet(), remHistory: remHistGet(), dict: dictGet(), terms: termGet(), settings };
+}
+function scheduleMirror() {
+  if (!isNative || mirrorBlocked) return;
+  clearTimeout(mirrorT); mirrorT = setTimeout(writeMirror, 1500);
+}
+async function writeMirror() {
+  const FS = P("Filesystem"); if (!FS) return;
+  const obj = backupObj();
+  if (FRESH && !hasData(obj)) return; // nu suprascriem o copie bună cu o aplicație goală
+  const data = JSON.stringify(obj);
+  for (const [path, directory] of MIRROR_FILES) {
+    try { await FS.writeFile({ path, data, directory, encoding: "utf8", recursive: true }); } catch (e) {}
+  }
+  try { localStorage.setItem("lastMirror", String(Date.now())); } catch (e) {}
+}
+const hasData = d => d && ["tasks", "history", "reminders", "remHistory"].some(k => arr(d[k]).length);
+function applyBackup(d, replace) {
+  let n = 0;
+  if (replace) {
+    DATA_KEYS.forEach(k => { if (Array.isArray(d[k])) { localStorage.setItem(k, JSON.stringify(d[k])); n += d[k].length; } });
+    if (d.settings && typeof d.settings === "object") SETTING_KEYS.forEach(k => { if (d.settings[k] != null) localStorage.setItem(k, String(d.settings[k])); });
+    localStorage.setItem("dictSeeded", "1");
+  } else {
+    DATA_KEYS.forEach(k => { n += mergeKey(k, d[k]); });
+  }
+  return n;
+}
+async function autoRestore() {
+  if (!isNative) return;
+  if (!FRESH) { mirrorBlocked = false; scheduleMirror(); return; }
+  const FS = P("Filesystem");
+  let found = null;
+  if (FS) for (const [path, directory] of MIRROR_FILES) {
+    try {
+      const r = await FS.readFile({ path, directory, encoding: "utf8" });
+      const d = JSON.parse(r.data);
+      if (hasData(d) && (!found || (d.saved || 0) > (found.saved || 0))) found = d;
+    } catch (e) {}
+  }
+  mirrorBlocked = false;
+  if (found && !hasData(backupObj())) {
+    const n = applyBackup(found, true);
+    migrateReminders(); refresh(); syncNative();
+    flash(`🛟 Am restaurat automat ${n} elemente din copia de siguranță (${new Date(found.saved).toLocaleString("ro-RO")}).`, "okbox");
+  }
+  scheduleMirror();
+}
 
 if (!localStorage.getItem("dictSeeded")) {
   dictSet([{ id: 1, heard: "es er el", correct: "SRL" }, { id: 2, heard: "srl", correct: "SRL" }]);
@@ -735,6 +851,7 @@ function saveAsTask(text) {
   };
   const l = tasksGet(); l.unshift(item); tasksSet(l);
   clearBox();
+  confirmFx(false);
   flash("✅ Sarcină salvată: " + clean, "okbox");
   openView("tasks"); renderBadges();
 }
@@ -808,22 +925,80 @@ function editInline(box, item, key) {
   ]));
   inp.focus();
 }
+// ---------- Istoric: Sarcini / Memento-uri / Alarme ----------
+const HSUBS = ["tasks", "popup", "alarm"];
+let histSub = HSUBS.includes(localStorage.getItem("histSub")) ? localStorage.getItem("histSub") : "tasks";
+document.querySelectorAll("#histSeg button").forEach(b => b.addEventListener("click", () => {
+  histSub = b.dataset.h; try { localStorage.setItem("histSub", histSub); } catch (e) {} renderHist();
+}));
+byId("histSearch").addEventListener("input", () => renderHist());
+const dayLabel = ms => new Date(ms).toLocaleDateString("ro-RO", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+// zi din „19.11.2026” (format vechi al sarcinilor)
+function roDayMs(s) { const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(String(s || "")); return m ? new Date(+m[3], +m[2] - 1, +m[1]).getTime() : 0; }
+const taskDoneMs = h => h.doneAt || roDayMs(h.day) || h.id / 10;
+function taskHistItem(h) {
+  const box = el("div", { class: "item" });
+  box.append(
+    el("div", { class: "txt", text: "✔ " + h.text }),
+    el("small", { text: `creată ${h.day} ${h.time}` + (h.doneAt ? ` · terminată ${fmtDT(h.doneAt)}` : "") }),
+    el("div", { class: "row" }, [
+      el("button", { text: "↩ Readu", onclick: () => restoreTask(h.id) }),
+      el("button", { text: "✏️ Edit", onclick: () => editInline(box, h, "history") }),
+      el("button", { class: "deleteBtn", text: "🗑️ Șterge", onclick: () => deleteHistory(h.id) })
+    ]));
+  return box;
+}
+function remHistItem(h) {
+  const st = h.status === "expired" ? "⌛ a sunat (nebifat)" : "✔ făcut";
+  return el("div", { class: "item" }, [
+    el("div", { class: "txt", text: (h.type === "alarm" ? "⏰ " : "🔔 ") + h.text }),
+    el("small", { text: `${fmtDT(h.due)} · ${st}` + (h.repeat ? " · " + REP_LABEL[h.repeat] : "") + (h.doneAt && h.status !== "expired" ? ` (${fmtDT(h.doneAt)})` : "") }),
+    el("div", { class: "row" }, [
+      el("button", { text: "🔁 Reprogramează", onclick: () => remHistReuse(h) }),
+      el("button", { class: "deleteBtn", text: "🗑️ Șterge", onclick: () => remHistDelete(h.id) })
+    ])
+  ]);
+}
+function remHistReuse(h) {
+  openView("cal");
+  byId("remText").value = h.text;
+  byId("remType").value = h.type === "alarm" ? "alarm" : "popup";
+  byId("remRepeat").value = h.repeat || "";
+  byId("remMsg").textContent = "Alege data și ora, apoi apasă „Adaugă memento”.";
+  byId("remText").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+function remHistDelete(id) {
+  if (!confirm("Ștergi definitiv din istoric?")) return;
+  remHistSet(remHistGet().filter(h => h.id !== id)); refresh();
+}
+function histClearSub() {
+  const label = { tasks: "sarcinile", popup: "memento-urile", alarm: "alarmele" }[histSub];
+  if (!confirm(`Ștergi definitiv toate ${label} din istoric?`)) return;
+  if (histSub === "tasks") histSet(histGet().filter(h => !h.done));
+  else remHistSet(remHistGet().filter(h => (h.type === "alarm" ? "alarm" : "popup") !== histSub));
+  refresh();
+}
 function renderHist() {
+  const rh = remHistGet(), th = histGet().filter(h => h.done);
+  byId("hcTasks").textContent = th.length || "";
+  byId("hcMem").textContent = rh.filter(h => h.type !== "alarm").length || "";
+  byId("hcAl").textContent = rh.filter(h => h.type === "alarm").length || "";
+  document.querySelectorAll("#histSeg button").forEach(b => b.classList.toggle("on", b.dataset.h === histSub));
+  const f = normEq(byId("histSearch").value.trim());
+  const match = t => !f || normEq(String(t)).includes(f);
+  let rows;
+  if (histSub === "tasks") rows = th.filter(h => match(h.text)).map(h => ({ ms: taskDoneMs(h), node: () => taskHistItem(h) }));
+  else rows = rh.filter(h => (h.type === "alarm" ? "alarm" : "popup") === histSub && match(h.text)).map(h => ({ ms: h.due, node: () => remHistItem(h) }));
+  rows.sort((a, b) => b.ms - a.ms);
   const list = byId("historyList"); list.replaceChildren();
-  const done = histGet().filter(h => h.done);
-  if (!done.length) list.append(hint("Nicio sarcină terminată încă."));
-  done.forEach(h => {
-    const box = el("div", { class: "item" });
-    box.append(
-      el("div", { class: "txt", text: "✔ " + h.text }),
-      el("small", { text: `${h.day} ${h.time}` }),
-      el("div", { class: "row" }, [
-        el("button", { text: "↩ Readu", onclick: () => restoreTask(h.id) }),
-        el("button", { text: "✏️ Edit", onclick: () => editInline(box, h, "history") }),
-        el("button", { class: "deleteBtn", text: "🗑️ Șterge", onclick: () => deleteHistory(h.id) })
-      ]));
-    list.append(box);
+  if (!rows.length) { list.append(hint(f ? "Nimic găsit." : "Nimic în istoric încă.")); return; }
+  let lastDay = "";
+  rows.slice(0, 400).forEach(r => {
+    const k = dkey(new Date(r.ms));
+    if (k !== lastDay) { lastDay = k; list.append(el("div", { class: "dayHdr", text: dayLabel(r.ms) })); }
+    list.append(r.node());
   });
+  list.append(el("button", { class: "deleteBtn", text: "🧹 Golește această secțiune", onclick: histClearSub }));
 }
 
 // ---------- trimitere și export ----------
@@ -873,16 +1048,42 @@ async function exportList() {
 // ====================================================================
 //  Alarme native (notificări locale programate)
 // ====================================================================
-const CHANNEL = "alarms_v1";     // sună lung (alarm.wav) și vibrează
-const CHANNEL_POP = "memento_v1"; // notificare normală
+const CHANNEL_POP = "memento_v1"; // notificare normală (sunetul telefonului)
+// Sunetele sunt generate la build în res/raw de build_android.py (al_<sunet>_<secunde>.wav, mem_<sunet>.wav).
+// Android nu permite schimbarea sunetului unui canal existent, deci fiecare combinație are canalul ei.
+const SOUNDS = [["clasic", "Clasic (bip-bip)"], ["digital", "Digital (ceas)"], ["clopotel", "Clopoțel"], ["sirena", "Sirenă (urgent)"], ["bland", "Blând (crește treptat)"]];
+const SND_LENS = [5, 15, 30];
+const MEMO_SOUNDS = [["sistem", "Sunetul telefonului"], ["ding", "Ding scurt"], ["bip", "Dublu bip"]];
+const sndAlarm = () => { const v = localStorage.getItem("sndAlarm"); return SOUNDS.some(s => s[0] === v) ? v : "clasic"; };
+const sndLen = () => { const v = +localStorage.getItem("sndLen"); return SND_LENS.includes(v) ? v : 15; };
+const sndMemo = () => { const v = localStorage.getItem("sndMemo"); return MEMO_SOUNDS.some(s => s[0] === v) ? v : "sistem"; };
+const sndName = (list, id) => (list.find(s => s[0] === id) || ["", id])[1];
+function alarmChannel() {
+  const s = sndAlarm(), n = sndLen();
+  return { id: `al_${s}_${n}`, name: `Alarme – ${sndName(SOUNDS, s)}, ${n}s`, sound: `al_${s}_${n}.wav`, alarm: true };
+}
+function memoChannel() {
+  const s = sndMemo();
+  if (s === "sistem") return { id: CHANNEL_POP, name: "Memento-uri", alarm: false };
+  return { id: "mem_" + s, name: "Memento-uri – " + sndName(MEMO_SOUNDS, s), sound: `mem_${s}.wav`, alarm: false };
+}
+const madeChannels = new Set();
+async function ensureChannel(c) {
+  if (madeChannels.has(c.id)) return;
+  const LN = P("LocalNotifications"); if (!LN) return;
+  const o = { id: c.id, name: c.name, description: c.alarm ? "Alarme programate de Secretara (sună și vibrează)" : "Memento-uri programate de Secretara",
+    importance: c.alarm ? 5 : 4, visibility: 1, vibration: true, lights: !!c.alarm };
+  if (c.sound) o.sound = c.sound;
+  try { await LN.createChannel(o); madeChannels.add(c.id); } catch (e) {}
+}
 let nativeReady = false;
 async function ensureNative() {
   if (!isNative || nativeReady) return;
   const LN = P("LocalNotifications");
   if (!LN) { flash("⚠️ Pluginul de notificări nu e încărcat. Reinstalează aplicația."); return; }
   nativeReady = true;
-  try { await LN.createChannel({ id: CHANNEL, name: "Alarme", description: "Alarme programate de Secretara (sună și vibrează)", importance: 5, visibility: 1, vibration: true, lights: true, sound: "alarm.wav" }); } catch (e) {}
-  try { await LN.createChannel({ id: CHANNEL_POP, name: "Memento-uri", description: "Memento-uri programate de Secretara (notificare)", importance: 4, visibility: 1, vibration: true }); } catch (e) {}
+  await ensureChannel(alarmChannel());
+  await ensureChannel(memoChannel());
   try { await LN.registerActionTypes({ types: [{ id: "MEMENTO", actions: [{ id: "snooze", title: "Amână 5 min" }, { id: "done", title: "Gata" }] }] }); } catch (e) {}
   try { LN.addListener("localNotificationActionPerformed", onNotifAction); } catch (e) {}
 }
@@ -904,9 +1105,11 @@ async function scheduleNative(r, atOverride, nidOverride) {
       if (r.repeat === "monthly") on.day = d.getDate();
       schedule = { on, allowWhileIdle: true };
     } else schedule = { at: new Date(when), allowWhileIdle: true };
+    const ch = r.type === "alarm" ? alarmChannel() : memoChannel();
+    await ensureChannel(ch);
     await LN.schedule({ notifications: [{
       id: nidOverride || r.nid, title: (r.repeat ? "🔁 " : "") + (r.type === "alarm" ? "⏰ Alarmă" : "🔔 Memento"), body: r.text,
-      channelId: r.type === "alarm" ? CHANNEL : CHANNEL_POP, actionTypeId: "MEMENTO", extra: { rid: r.id }, schedule
+      channelId: ch.id, actionTypeId: "MEMENTO", extra: { rid: r.id }, schedule
     }] });
   } catch (e) { flash("⚠️ Nu am putut programa alarma: " + errMsg(e)); }
 }
@@ -929,6 +1132,7 @@ async function syncNative() {
   const LN = P("LocalNotifications"); if (!LN) return;
   try { const p = await LN.checkPermissions(); if (p.display !== "granted") await LN.requestPermissions(); } catch (e) {}
   // memento-urile repetitive: avansează data dacă aplicația n-a fost deschisă de mult
+  archiveExpired();
   const l = remGet(), now = Date.now(); let ch = false;
   l.forEach(r => { if (!r.done && r.repeat && r.due <= now) { r.due = nextOcc(r.due, r.repeat, now); r.fired = false; ch = true; } });
   if (ch) { remSet(l); refresh(); }
@@ -956,14 +1160,61 @@ async function createReminder(text, due, type, repeat) {
   refresh();
   return r;
 }
+// ---------- istoricul memento-urilor / alarmelor (separat de lista activă) ----------
+function remToHist(r, status, due) {
+  const h = remHistGet();
+  h.unshift({ id: uid(), rid: r.id, text: r.text, type: r.type, due: due != null ? due : r.due, doneAt: Date.now(), status, repeat: r.repeat || null });
+  if (h.length > 3000) h.length = 3000;
+  remHistSet(h);
+}
+// versiunile vechi țineau cele făcute în listă, tăiate cu bară: le mutăm o singură dată în istoric
+function migrateReminders() {
+  const l = remGet(); const old = l.filter(r => r.done);
+  if (!old.length) return;
+  const h = remHistGet();
+  old.forEach(r => h.push({ id: r.id, rid: r.id, text: r.text, type: r.type, due: r.due, doneAt: r.due, status: "done", repeat: r.repeat || null }));
+  h.sort((a, b) => b.due - a.due);
+  remHistSet(h); remSet(l.filter(r => !r.done));
+}
+// alarmele care au sunat și n-au fost bifate trec singure în istoric după 12 ore
+function archiveExpired() {
+  const l = remGet(), lim = Date.now() - 12 * 3600000;
+  const old = l.filter(r => !r.repeat && !r.done && r.fired && r.due < lim);
+  if (!old.length) return;
+  old.forEach(r => remToHist(r, "expired"));
+  remSet(l.filter(r => !old.includes(r)));
+}
 function remDone(id) {
   const l = remGet(); const r = l.find(x => x.id === id); if (!r) return;
+  const now = Date.now();
   if (r.repeat) {
-    r.due = nextOcc(r.due, r.repeat, Date.now()); r.fired = false; remSet(l);
+    remToHist(r, "done", Math.min(r.due, now));
+    r.due = nextOcc(r.due, r.repeat, now); r.fired = false; remSet(l);
     cancelNative(r, true); // anulează doar o eventuală amânare; repetarea rămâne
     return;
   }
-  r.done = true; remSet(l); cancelNative(r);
+  remSet(l.filter(x => x.id !== id));
+  remToHist(r, "done");
+  cancelNative(r);
+}
+// mută rapid un memento (+10 min, +1 oră, mâine) sau îi schimbă tipul
+async function remShift(id, ms) {
+  const l = remGet(); const x = l.find(y => y.id === id); if (!x) return;
+  await cancelNative(x);
+  x.due = Math.max(x.due, Date.now()) + ms; x.fired = false; remSet(l);
+  await scheduleNative(x);
+  showLast(x); refresh(); confirmFx(false);
+}
+async function remSwapType(id) {
+  const l = remGet(); const x = l.find(y => y.id === id); if (!x) return;
+  await cancelNative(x);
+  x.type = x.type === "alarm" ? "popup" : "alarm"; remSet(l);
+  await scheduleNative(x);
+  showLast(x); refresh(); confirmFx(false);
+}
+async function rescheduleAll() {
+  if (!isNative) return;
+  for (const r of remGet()) { await cancelNative(r); await scheduleNative(r); }
 }
 function remSnooze(id, min) {
   const l = remGet(); const r = l.find(x => x.id === id); if (!r) return;
@@ -972,35 +1223,20 @@ function remSnooze(id, min) {
   r.due = at; r.fired = false; r.done = false; remSet(l);
   cancelNative(r).then(() => scheduleNative(r));
 }
-function remToggle(id) {
-  const l = remGet(); const r = l.find(x => x.id === id); if (!r) return;
-  if (r.done) {
-    r.done = false; r.fired = false;
-    if (r.repeat && r.due <= Date.now()) r.due = nextOcc(r.due, r.repeat, Date.now());
-    remSet(l); scheduleNative(r);
-  } else remDone(id);
-  refresh();
-}
 function remDelete(id) {
   const r = remGet().find(x => x.id === id);
   if (r) cancelNative(r);
   remSet(remGet().filter(x => x.id !== id));
   refresh();
 }
-function remClearDone() {
-  const n = remGet().filter(r => r.done).length;
-  if (!n || !confirm(`Ștergi definitiv ${n} memento-uri făcute?`)) return;
-  remSet(remGet().filter(r => !r.done)); refresh();
-}
 const REP_LABEL = { daily: "🔁 zilnic", weekly: "🔁 săptămânal", monthly: "🔁 lunar" };
 function reminderItem(r) {
   const box = el("div", { class: "item" });
   const txt = el("div", { class: "txt", text: (r.type === "alarm" ? "⏰ " : "🔔 ") + r.text });
-  if (r.done) txt.style.textDecoration = "line-through";
   box.append(txt,
-    el("small", { text: fmtDT(r.due) + (r.repeat ? " · " + REP_LABEL[r.repeat] : "") + (r.done ? " · făcut" : r.fired ? " · a sunat" : "") }),
+    el("small", { text: fmtDT(r.due) + (r.repeat ? " · " + REP_LABEL[r.repeat] : "") + (r.fired ? " · a sunat" : "") }),
     el("div", { class: "row" }, [
-      el("button", { class: "doneBtn", text: r.done ? "↩ Redeschide" : "✔ Gata", onclick: () => remToggle(r.id) }),
+      el("button", { class: "doneBtn", text: "✔ Gata", onclick: () => { remDone(r.id); refresh(); } }),
       el("button", { text: "✏️ Edit", onclick: () => editReminder(r, box) }),
       el("button", { class: "deleteBtn", text: "Șterge", onclick: () => remDelete(r.id) })
     ]));
@@ -1037,18 +1273,21 @@ function renderMem() {
   const up = all.filter(r => !r.done).sort((a, b) => a.due - b.due);
   if (!up.length) u.append(hint("Niciun memento programat. Spune de ex.: „mâine la ora 9 pune o alarmă cu textul …” și apoi „gata”."));
   up.forEach(r => u.append(reminderItem(r)));
-  const done = all.filter(r => r.done).sort((a, b) => b.due - a.due);
-  byId("memDoneCount").textContent = done.length;
-  const d = byId("memDone"); d.replaceChildren();
-  done.slice(0, 100).forEach(r => d.append(reminderItem(r)));
-  if (done.length) d.append(el("button", { class: "deleteBtn", text: "🧹 Șterge toate cele făcute", onclick: remClearDone }));
 }
-function showLast(r) {
+function showLast(r, note) {
   const b = byId("lastMem");
+  const H = 3600000;
   b.replaceChildren(el("div", { class: "item okbox" }, [
     el("div", { text: `✅ ${r.type === "alarm" ? "Alarmă setată" : "Memento setat"}: ${fmtDT(r.due)}${r.repeat ? " · " + REP_LABEL[r.repeat] : ""}` }),
-    el("div", { text: r.text }),
-    el("button", { class: "deleteBtn", text: "↩ Anulează", onclick: () => { remDelete(r.id); b.replaceChildren(); } })
+    el("div", { class: "txt", text: r.text }),
+    ...(note ? [el("small", { text: note })] : []),
+    el("div", { class: "row" }, [
+      el("button", { text: "+10 min", onclick: () => remShift(r.id, 10 * 60000) }),
+      el("button", { text: "+1 oră", onclick: () => remShift(r.id, H) }),
+      el("button", { text: "Mâine", onclick: () => remShift(r.id, 24 * H) }),
+      el("button", { text: r.type === "alarm" ? "→ 🔔 Memento" : "→ ⏰ Alarmă", onclick: () => remSwapType(r.id) }),
+      el("button", { class: "deleteBtn", text: "↩ Anulează", onclick: () => { remDelete(r.id); b.replaceChildren(); } })
+    ])
   ]));
 }
 
@@ -1081,7 +1320,22 @@ function pickBest(ms, keys) {
   return ms[best];
 }
 
-function ttsOn() { return localStorage.getItem("tts") !== "0"; }
+// confirmare: "both" (sunet + voce), "sound", "voice", "none"; compatibil cu vechea setare „tts”
+function confMode() {
+  const v = localStorage.getItem("confMode");
+  if (["both", "sound", "voice", "none"].includes(v)) return v;
+  return localStorage.getItem("tts") === "0" ? "sound" : "both";
+}
+function ttsOn() { const m = confMode(); return m === "both" || m === "voice"; }
+// sunet scurt de confirmare (două tonuri urcătoare) + vibrație scurtă
+function confirmFx(force) {
+  const m = force ? "sound" : confMode();
+  if (m === "both" || m === "sound") {
+    unlockAudio();
+    remBeep(784, 0.09, 0.25); setTimeout(() => remBeep(1175, 0.16, 0.25), 105);
+  }
+  if (m !== "none" && navigator.vibrate) navigator.vibrate(45);
+}
 function speak(t) {
   if (!ttsOn()) return;
   try { const u = new SpeechSynthesisUtterance(t); u.lang = "ro-RO"; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (e) {}
@@ -1089,8 +1343,7 @@ function speak(t) {
 function spokenWhen(ms) {
   return new Date(ms).toLocaleString("ro-RO", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
 }
-function toggleSnap() { localStorage.setItem("snap", snapOn() ? "0" : "1"); renderSettings(); }
-function toggleTts() { localStorage.setItem("tts", ttsOn() ? "0" : "1"); renderSettings(); }
+function toggleSnap() { lsSetRaw("snap", snapOn() ? "0" : "1"); renderSettings(); }
 
 let nDictated = "";
 function learnFromEdit(finalTxt) {
@@ -1129,19 +1382,27 @@ async function createMany(parts, forcedType) {
     el("button", { class: "deleteBtn", text: "↩ Anulează toate", onclick: () => { made.forEach(r => remDelete(r.id)); byId("lastMem").replaceChildren(); } })
   ]));
   openView("mem");
+  confirmFx(false);
   speak(`Am programat ${made.length} memento-uri.`);
 }
 async function createOne(p, type) {
+  // ex. „azi alarmă X” fără oră, după ora implicită: nu programăm în trecut
+  if (!p.repeat && p.due.getTime() <= Date.now() + 5000) {
+    noDate(byId("textBox").value || p.text, p, type, `⚠️ Ora rezultată (${fmtDT(p.due.getTime())}) a trecut deja. Spune și ora (ex. „azi la 17 …”) sau alege data din calendar. Textul a rămas în căsuță.`);
+    return;
+  }
   const r = await createReminder(p.text, p.due.getTime(), type, p.repeat);
   clearBox();
-  showLast(r);
+  const dt = p.defaultTime ? `Nu ai spus ora, am pus ora implicită ${pad2(defTimeHM().h)}:${pad2(defTimeHM().m)}.` : "";
+  showLast(r, dt);
   openView("mem");
+  confirmFx(false);
   const rw = { daily: "zilnic", weekly: "săptămânal", monthly: "lunar" }[r.repeat];
   speak(`Am programat ${r.type === "alarm" ? "alarma" : "memento-ul"} ${rw ? rw + ", începând din " : "pentru "}${spokenWhen(r.due)}. ${r.text}`);
 }
-function noDate(text, p, type) {
+function noDate(text, p, type, msg) {
   byId("textBox").value = text;
-  flash("⚠️ Nu am găsit data/ora. Spune de ex.: „mâine la ora 9 …” sau alege data din calendar. Textul a rămas în căsuță.", "warnbox", [
+  flash(msg || "⚠️ Nu am găsit data/ora. Spune de ex.: „mâine la ora 9 …” sau alege data din calendar. Textul a rămas în căsuță.", "warnbox", [
     el("button", { class: "doneBtn", text: "📅 Alege data în calendar", onclick: () => {
       openView("cal");
       byId("remText").value = p && p.text ? p.text : text;
@@ -1155,6 +1416,7 @@ function saveText(mode, raw) {
   let text = (raw != null ? raw : byId("textBox").value).trim();
   for (let k = 0; k < 3; k++) { const t2 = stripStop(text); if (t2 === text) break; text = t2; }
   if (!text) { flash("Căsuța e goală. Dictează sau scrie ceva întâi."); return; }
+  byId("textBox").value = text;
   learnFromEdit(text);
   text = fixText(text);
   if (mode === "task") { saveAsTask(text); return; }
@@ -1188,17 +1450,53 @@ function setRecUi(on) {
 }
 
 // ---------- voce nativă (Android) ----------
-let nListening = false, nCommitted = "", nPartial = "", nFails = 0, nListenersSet = false, nKeys = null;
-function commitPartial() { if (nPartial) { nCommitted += nPartial.trim() + " "; nPartial = ""; } }
-async function nativeBegin() {
-  if (!nListening) return;
+// Probleme reparate (de aici venea „apăs Start, vorbesc și nu apare nimic”):
+//  1. După Stop, o a doua oprire întârziată (900 ms) omora sesiunea nouă dacă apăsai repede din nou Start.
+//  2. La erori ale recunoașterii (fără potrivire, ocupat, timeout) pluginul nu mai trimitea „stopped”,
+//     iar bucla de ascultare rămânea blocată pe „Ascult…” fără să mai pornească microfonul.
+//  3. Rezultatul final al unei fraze sosea după „stopped” și se putea pierde sau dubla.
+// Acum: fiecare pornire are un număr de sesiune, un „paznic” repornește microfonul dacă nu vine niciun
+// semnal câteva secunde, iar rezultatul final întârziat înlocuiește fraza deja salvată (fără dubluri).
+let nListening = false, nSegs = [], nPartial = "", nFails = 0, nListenersSet = false, nKeys = null;
+let nSession = 0, nLastEvt = 0, nCommitAt = 0, nAfterCommit = false, nHeard = false, nWatch = null, nKicks = 0, nRestartT = null;
+const nText = () => (nSegs.join(" ") + " " + nPartial).replace(/\s+/g, " ").trim();
+function commitPartial() {
+  if (nPartial.trim()) { nSegs.push(nPartial.trim()); nAfterCommit = true; nCommitAt = Date.now(); }
+  nPartial = "";
+}
+function scheduleBegin(ms) {
+  clearTimeout(nRestartT);
+  const s = nSession;
+  nRestartT = setTimeout(() => nativeBegin(s), ms);
+}
+async function nativeBegin(sess) {
+  if (!nListening || sess !== nSession) return;
+  commitPartial();
+  nLastEvt = Date.now();
   try {
     await P("SpeechRecognition").start({ language: "ro-RO", maxResults: 5, partialResults: true, popup: false });
   } catch (e) {
+    if (!nListening || sess !== nSession) return;
     nFails++;
     if (nFails > 6) { stopNative(false); setStatus("⚠️ Microfonul nu pornește: " + errMsg(e)); return; }
-    setTimeout(nativeBegin, 700);
+    dbg("repornesc microfonul… (" + errMsg(e) + ")");
+    try { await P("SpeechRecognition").stop(); } catch (e2) {}
+    scheduleBegin(700);
   }
+}
+// paznic: dacă în 7 secunde nu vine niciun semnal de la recunoaștere, repornim microfonul
+function nWatchdog() {
+  if (!nListening) return;
+  if (Date.now() - nLastEvt < 7000) return;
+  nKicks++;
+  if (nKicks > 6 && !nHeard) {
+    stopNative(false);
+    setStatus("⚠️ Nu am primit nimic de la recunoașterea vocală. Verifică ⚙️ Setări → Recunoaștere vocală Google.");
+    return;
+  }
+  dbg("repornesc microfonul…");
+  nLastEvt = Date.now();
+  Promise.resolve().then(() => P("SpeechRecognition").stop()).catch(() => {}).then(() => scheduleBegin(350));
 }
 async function startNative() {
   const SRp = P("SpeechRecognition");
@@ -1214,36 +1512,51 @@ async function startNative() {
     nListenersSet = true;
     SRp.addListener("partialResults", d => {
       if (!nListening || !d || !d.matches || !d.matches[0]) return;
-      nFails = 0; nPartial = pickBest(d.matches, nKeys); dbg("auzit: " + nPartial.slice(-60));
-      byId("textBox").value = (nCommitted + nPartial).trim();
+      nFails = 0; nKicks = 0; nHeard = true; nLastEvt = Date.now();
+      const m = pickBest(d.matches, nKeys);
+      // rezultatul final al frazei precedente, sosit după ce am salvat-o: îl înlocuim (e mai corect), nu-l dublăm
+      if (nAfterCommit && nSegs.length && Date.now() - nCommitAt < 1500) nSegs[nSegs.length - 1] = m.trim();
+      else { nAfterCommit = false; nPartial = m; }
+      dbg("auzit: " + m.slice(-60));
+      byId("textBox").value = nText();
       if (STOPRE.test(normEq(byId("textBox").value))) stopNative(true);
     });
     SRp.addListener("listeningState", d => {
-      if (d && d.status === "stopped") {
-        commitPartial();
-        if (nListening) {
-          if (STOPRE.test(normEq(nCommitted.trim()))) { stopNative(true); return; }
-          setTimeout(nativeBegin, 250);
-        }
+      if (!d || !nListening) return;
+      nLastEvt = Date.now();
+      if (d.status === "started") { nAfterCommit = false; nFails = 0; setStatus("🎙️ Ascult… vorbește"); }
+      else if (d.status === "stopped") {
+        if (STOPRE.test(normEq(nText()))) { stopNative(true); return; }
+        scheduleBegin(300); // lăsăm timp rezultatului final să sosească, apoi repornim
       }
     });
   }
-  byId("textBox").value = ""; nCommitted = ""; nPartial = ""; nFails = 0; nDictated = ""; nKeys = buildKeys();
+  nSession++;
+  clearTimeout(nRestartT);
+  byId("textBox").value = ""; nSegs = []; nPartial = ""; nFails = 0; nKicks = 0; nHeard = false; nAfterCommit = false; nDictated = ""; nKeys = buildKeys();
   byId("dictSuggest").replaceChildren();
   nListening = true;
   setRecUi(true);
-  nativeBegin();
+  setStatus("⏳ Pornesc microfonul… așteaptă");
+  clearInterval(nWatch); nWatch = setInterval(nWatchdog, 1000);
+  // oprim orice sesiune rămasă agățată, apoi pornim curat
+  try { await withTimeout(Promise.resolve(SRp.stop()), 800); } catch (e) {}
+  scheduleBegin(150);
 }
 function stopPluginSafely() {
+  const s = nSession;
   const doStop = () => { try { Promise.resolve(P("SpeechRecognition").stop()).catch(() => {}); } catch (e) {} };
-  doStop(); setTimeout(doStop, 900);
+  doStop();
+  // a doua oprire doar dacă între timp NU s-a pornit o dictare nouă
+  setTimeout(() => { if (!nListening && s === nSession) doStop(); }, 900);
 }
 function stopNative(auto) {
   if (!nListening) return;
   nListening = false;
+  clearInterval(nWatch); clearTimeout(nRestartT);
   setRecUi(false); dbg("");
   commitPartial();
-  const t = fixText(stripStop(nCommitted));
+  const t = fixText(stripStop(nText()));
   byId("textBox").value = t; nDictated = t;
   stopPluginSafely();
   if (auto && t) saveText("auto", t);
@@ -1313,8 +1626,13 @@ function calMove(d) { calM += d; if (calM < 0) { calM = 11; calY--; } if (calM >
 function calRender() {
   const names = ["Ianuarie","Februarie","Martie","Aprilie","Mai","Iunie","Iulie","August","Septembrie","Octombrie","Noiembrie","Decembrie"];
   byId("calLabel").textContent = `${names[calM]} ${calY}`;
-  const list = remGet(); const counts = {};
-  list.forEach(r => { if (!r.done) { const k = dkey(new Date(r.due)); counts[k] = (counts[k] || 0) + 1; } });
+  const list = remGet(), rh = remHistGet(), th = histGet().filter(h => h.done);
+  // activitate pe zile: programate + istoric (memento-uri/alarme făcute sau care au sunat) + sarcini terminate
+  const act = {};
+  const add = (ms, kind) => { if (!ms) return; const k = dkey(new Date(ms)); (act[k] = act[k] || { al: 0, mem: 0, task: 0 })[kind]++; };
+  list.forEach(r => add(r.due, r.type === "alarm" ? "al" : "mem"));
+  rh.forEach(h => add(h.due, h.type === "alarm" ? "al" : "mem"));
+  th.forEach(h => add(taskDoneMs(h), "task"));
   const g = byId("calGrid"); g.replaceChildren();
   ["L", "Ma", "Mi", "J", "V", "S", "D"].forEach(x => g.append(el("div", { class: "ch", text: x })));
   const off = (new Date(calY, calM, 1).getDay() + 6) % 7;
@@ -1323,17 +1641,29 @@ function calRender() {
   const todayK = dkey(new Date());
   for (let d = 1; d <= dim; d++) {
     const k = `${calY}-${pad2(calM + 1)}-${pad2(d)}`;
-    const cell = el("div", { class: "cd" + (k === todayK ? " today" : "") + (k === calSel ? " sel" : ""),
+    const a = act[k];
+    const cell = el("div", { class: "cd" + (k === todayK ? " today" : "") + (k < todayK ? " past" : "") + (a ? " act" : "") + (k === calSel ? " sel" : ""),
       onclick: () => { calSel = k; byId("remDate").value = k; calRender(); } }, [String(d)]);
-    if (counts[k]) cell.append(el("small", { text: "⏰ " + counts[k] }));
+    if (a) {
+      const parts = [];
+      if (a.al) parts.push("⏰" + a.al);
+      if (a.mem) parts.push("🔔" + a.mem);
+      if (a.task) parts.push("✔" + a.task);
+      cell.append(el("small", { text: parts.join(" ") }));
+    }
     g.append(cell);
   }
   const [sy, sm, sd] = calSel.split("-").map(Number);
   byId("calDayTitle").textContent = new Date(sy, sm - 1, sd).toLocaleDateString("ro-RO", { weekday: "long", day: "numeric", month: "long" });
   const dl = byId("calList"); dl.replaceChildren();
-  const day = list.filter(r => dkey(new Date(r.due)) === calSel).sort((a, b) => a.due - b.due);
-  if (!day.length) dl.append(hint("Niciun memento în această zi."));
-  day.forEach(r => dl.append(reminderItem(r)));
+  const inDay = ms => ms && dkey(new Date(ms)) === calSel;
+  const day = list.filter(r => inDay(r.due)).sort((a, b) => a.due - b.due);
+  const dayH = rh.filter(h => inDay(h.due)).sort((a, b) => a.due - b.due);
+  const dayT = th.filter(h => inDay(taskDoneMs(h)));
+  if (!day.length && !dayH.length && !dayT.length) dl.append(hint("Nimic în această zi."));
+  if (day.length) { dl.append(el("div", { class: "dayHdr", text: "Programate" })); day.forEach(r => dl.append(reminderItem(r))); }
+  if (dayH.length) { dl.append(el("div", { class: "dayHdr", text: "Din istoric (memento-uri și alarme)" })); dayH.forEach(h => dl.append(remHistItem(h))); }
+  if (dayT.length) { dl.append(el("div", { class: "dayHdr", text: "Sarcini terminate" })); dayT.forEach(h => dl.append(taskHistItem(h))); }
 }
 async function addReminder() {
   const msg = byId("remMsg");
@@ -1346,6 +1676,7 @@ async function addReminder() {
   byId("remText").value = "";
   calSel = dkey(new Date(due)); const d = new Date(due); calY = d.getFullYear(); calM = d.getMonth();
   await createReminder(text, due, byId("remType").value, repeat);
+  if (due > Date.now()) confirmFx(false);
   msg.textContent = due < Date.now() ? "Salvat, dar ora e în trecut." : "Salvat pentru " + fmtDT(due) + (isNative ? " (alarmă programată în telefon)." : " (în browser sună doar cu pagina deschisă).");
 }
 
@@ -1388,7 +1719,98 @@ function renderSettings() {
     ? "Rulezi ca aplicație Android: alarmele sunt programate în telefon și sună și cu aplicația închisă."
     : "Rulezi în browser: alarmele sună doar cât timp pagina e deschisă. Pentru alarme sigure instalează aplicația (APK).";
   byId("btnSnap").textContent = snapOn() ? "🎯 Corectare aproximativă termeni: PORNITĂ" : "🎯 Corectare aproximativă termeni: OPRITĂ";
-  byId("btnTts").textContent = ttsOn() ? "🔊 Confirmare vocală: PORNITĂ" : "🔇 Confirmare vocală: OPRITĂ";
+  const fill = (id, list, val) => {
+    const s = byId(id);
+    if (!s.options.length) list.forEach(([v, t]) => s.append(el("option", { value: v, text: t })));
+    s.value = val;
+  };
+  fill("sndAlarm", SOUNDS, sndAlarm());
+  fill("sndMemo", MEMO_SOUNDS, sndMemo());
+  byId("sndLen").value = String(sndLen());
+  byId("confMode").value = confMode();
+  const dt = defTimeHM(); byId("defTime").value = `${pad2(dt.h)}:${pad2(dt.m)}`;
+  const lm = +localStorage.getItem("lastMirror") || 0;
+  byId("autoBkInfo").textContent = !isNative ? "" : lm ? "Ultima copie automată: " + new Date(lm).toLocaleString("ro-RO") : "Copia automată se face la prima modificare.";
+  byId("verInfo").textContent = "Secretara " + APP_VER;
+}
+const APP_VER = "v3.1 · 19.11.2026";
+async function sndChanged() {
+  lsSetRaw("sndAlarm", byId("sndAlarm").value);
+  lsSetRaw("sndLen", byId("sndLen").value);
+  lsSetRaw("sndMemo", byId("sndMemo").value);
+  const info = byId("sndInfo");
+  if (isNative && remGet().length) {
+    info.textContent = "⏳ Aplic noul sunet și pe alarmele deja programate…";
+    await rescheduleAll();
+  }
+  info.textContent = "✅ Salvat. Alarmele noi (și cele programate) folosesc: " + sndName(SOUNDS, sndAlarm()) + ", " + sndLen() + " secunde.";
+}
+function confChanged() { lsSetRaw("confMode", byId("confMode").value); lsSetRaw("tts", ttsOn() ? "1" : "0"); confirmFx(false); }
+function defTimeChanged() {
+  const v = byId("defTime").value;
+  if (/^\d{1,2}:\d{2}$/.test(v)) { lsSetRaw("defTime", v); byId("sndInfo").textContent = "✅ Ora implicită: " + v; }
+}
+
+// ---------- previzualizare sunete (aceleași formule ca în build_android.py) ----------
+function sndSample(kind, t) {
+  const TAU = 2 * Math.PI, S = Math.sin;
+  const seg = x => Math.min(1, x * 12, (1 - x) * 12);
+  if (kind === "clasic") {
+    const ph = t % 1;
+    let f = 0, a0 = 0, a1 = 0;
+    if (ph < 0.15) { f = 880; a0 = 0; a1 = 0.15; }
+    else if (ph >= 0.25 && ph < 0.40) { f = 1175; a0 = 0.25; a1 = 0.40; }
+    else if (ph >= 0.50 && ph < 0.65) { f = 880; a0 = 0.50; a1 = 0.65; }
+    return f ? 0.7 * seg((ph - a0) / (a1 - a0)) * S(TAU * f * t) : 0;
+  }
+  if (kind === "digital") {
+    const ph = t % 1;
+    for (let k = 0; k < 4; k++) {
+      const s = k * 0.12;
+      if (ph >= s && ph < s + 0.07) return 0.6 * Math.min(1, (ph - s) / 0.07 * 10, (1 - (ph - s) / 0.07) * 10) * S(TAU * 1500 * t);
+    }
+    return 0;
+  }
+  if (kind === "clopotel") {
+    const ph = t % 1.6; let v = 0;
+    for (const [s, f] of [[0, 880], [0.45, 660]]) {
+      if (ph >= s) { const d = ph - s; v += Math.min(1, d * 200) * Math.exp(-d * 4) * (S(TAU * f * t) + 0.35 * S(TAU * 2 * f * t)); }
+    }
+    return 0.45 * v;
+  }
+  if (kind === "sirena") return 0.55 * S(TAU * (975 * t - (325 / TAU) * S(TAU * t)));
+  if (kind === "bland") {
+    const ph = t % 2; let v = 0;
+    for (const [s, f] of [[0, 523], [0.5, 659], [1.0, 784]]) if (ph >= s && ph < s + 0.5) v = S(Math.PI * (ph - s) / 0.5) * S(TAU * f * t);
+    return Math.min(0.8, 0.25 + 0.055 * t) * v;
+  }
+  if (kind === "ding") {
+    let v = 0;
+    for (const [s, f] of [[0, 988], [0.15, 1319]]) if (t >= s) { const d = t - s; v += Math.min(1, d * 200) * Math.exp(-d * 6) * (S(TAU * f * t) + 0.3 * S(TAU * 2 * f * t)); }
+    return 0.4 * v;
+  }
+  if (kind === "bip") {
+    for (const s of [0, 0.18]) if (t >= s && t < s + 0.1) return 0.6 * Math.min(1, (t - s) / 0.1 * 10, (1 - (t - s) / 0.1) * 10) * S(TAU * 1000 * t);
+    return 0;
+  }
+  return 0;
+}
+let prevSrc = null;
+function playSynth(kind, secs) {
+  unlockAudio(); if (!remAC) return;
+  try { if (prevSrc) { prevSrc.stop(); prevSrc = null; return; } } catch (e) {}
+  const sr = remAC.sampleRate, n = Math.floor(sr * secs), fade = Math.floor(sr * 0.05);
+  const b = remAC.createBuffer(1, n, sr), d = b.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = sndSample(kind, i / sr) * (i > n - fade ? (n - i) / fade : 1);
+  const src = remAC.createBufferSource(); src.buffer = b; src.connect(remAC.destination);
+  src.onended = () => { if (prevSrc === src) prevSrc = null; };
+  prevSrc = src; src.start();
+}
+function previewAlarm() { playSynth(byId("sndAlarm").value || sndAlarm(), Math.min(+byId("sndLen").value || 15, 6)); }
+function previewMemo() {
+  const s = byId("sndMemo").value || sndMemo();
+  if (s === "sistem") { byId("sndInfo").textContent = "„Sunetul telefonului” = sunetul de notificare ales în Android."; return; }
+  playSynth(s, s === "ding" ? 1.2 : 0.5);
 }
 async function settingsCheck() {
   if (!isNative) { byId("setInfo").textContent = "În browser nu există permisiuni native de verificat."; return; }
@@ -1418,6 +1840,27 @@ async function testAlarm() {
 // ---------- Româna offline (plugin propriu OfflineSpeech, Android 13+) ----------
 const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
 let offListener = false;
+// coduri de eroare Android SpeechRecognizer → explicație
+const SR_ERR = {
+  1: "rețeaua a răspuns prea greu", 2: "eroare de rețea", 3: "eroare la microfon", 4: "eroare la serverul Google",
+  5: "eroare în aplicația de recunoaștere", 6: "nu s-a auzit nimic", 7: "nu s-a recunoscut nimic", 8: "recunoașterea e ocupată",
+  9: "lipsesc permisiunile", 10: "prea multe cereri", 11: "serverul s-a deconectat",
+  12: "limba română NU e oferită de modelul offline al acestui telefon (nu ține de Wi-Fi)",
+  13: "limba română nu e disponibilă momentan pentru descărcare", 14: "telefonul nu poate verifica limbile", 15: "telefonul nu poate urmări descărcarea"
+};
+const srErr = code => SR_ERR[code] ? `cod ${code}: ${SR_ERR[code]}` : `cod ${code}`;
+async function offlineSettings() {
+  const out = byId("offInfo");
+  if (!isNative) { out.textContent = "Disponibil doar în aplicația Android."; return; }
+  try {
+    const r = await P("OfflineSpeech").openSettings();
+    out.textContent = r && r.opened === "google"
+      ? "Am deschis descărcarea limbilor Google. Alege „Română” și descarc-o."
+      : "Caută: Google → Voce (Voice) → Recunoaștere vocală offline → Toate → Română. Sau în Gboard: Setări → Tastare vocală → Recunoaștere offline.";
+  } catch (e) {
+    out.textContent = "Deschide manual aplicația Google → poza ta → Setări → Voce → Recunoaștere vocală offline → Română. (Funcția necesită build-ul complet.)";
+  }
+}
 async function offlineCheck() {
   const out = byId("offInfo");
   if (!isNative) { out.textContent = "Disponibil doar în aplicația Android."; return; }
@@ -1427,8 +1870,8 @@ async function offlineCheck() {
     if (!r.supported) out.textContent = r.sdk < 33 ? "Telefonul are Android sub 13: descărcarea din aplicație nu e posibilă." : "Telefonul nu are recunoaștere vocală pe dispozitiv.";
     else if (r.installed) out.textContent = "✅ Româna offline e instalată.";
     else if (r.pending) out.textContent = "⏳ Descărcarea e în curs.";
-    else if (r.error != null) out.textContent = "Nu am putut verifica (cod " + r.error + "). Poți încerca totuși descărcarea.";
-    else if (r.available === false) out.textContent = "Româna nu apare în lista de limbi offline a telefonului. Poți încerca totuși descărcarea.";
+    else if (r.error != null) out.textContent = "Nu am putut verifica (" + srErr(r.error) + "). Poți încerca descărcarea sau „⚙️ Setări voce Google”.";
+    else if (r.available === false) out.textContent = "Modelul offline încorporat al telefonului nu oferă româna" + (r.langs ? ` (are: ${String(r.langs).slice(0, 120)})` : "") + ". Folosește „⚙️ Setări voce Google” → Recunoaștere vocală offline → Română: dictarea din aplicație folosește tot Google și va merge offline.";
     else out.textContent = "❌ Româna offline nu e instalată. Apasă „Descarcă”.";
   } catch (e) {
     out.textContent = /timeout/.test(errMsg(e)) ? "Telefonul nu a răspuns. Încearcă „Descarcă”." :
@@ -1442,13 +1885,18 @@ async function offlineDownload() {
   if (!offListener) { offListener = true; try { OS.addListener("downloadProgress", d => { out.textContent = `⏳ Se descarcă: ${d && d.progress != null ? d.progress : "?"}%`; }); } catch (e) {} }
   out.textContent = "⏳ Pornesc descărcarea… (poate apărea o fereastră de confirmare)";
   try {
-    const r = await OS.download({ language: "ro-RO" });
-    const res = (r && r.result) || "";
+    let r = await OS.download({ language: "ro-RO" });
+    let res = (r && r.result) || "";
+    // unele telefoane acceptă doar codul scurt „ro”
+    if (/^error:1[23]$/.test(res)) { r = await OS.download({ language: "ro" }); res = (r && r.result) || res; }
     if (res === "installed") out.textContent = "✅ Româna offline e instalată.";
     else if (res === "scheduled") out.textContent = "🕒 Descărcarea a fost programată (de obicei pe Wi-Fi). Verifică mai târziu.";
     else if (res === "started") out.textContent = "⏳ Descărcarea a pornit. Apasă „Verifică” peste un minut.";
-    else out.textContent = "⚠️ Descărcarea nu a reușit (" + res + "). Încearcă din nou pe Wi-Fi.";
-  } catch (e) { out.textContent = "⚠️ " + errMsg(e); }
+    else {
+      const code = +(res.split(":")[1] || NaN);
+      out.textContent = "⚠️ Descărcarea directă nu a reușit (" + (isNaN(code) ? res : srErr(code)) + "). Apasă „⚙️ Setări voce Google” și descarcă româna de acolo.";
+    }
+  } catch (e) { out.textContent = "⚠️ " + errMsg(e) + " — încearcă „⚙️ Setări voce Google”."; }
 }
 
 // ====================================================================
@@ -1460,10 +1908,12 @@ function unlockAudio() {
   if (remAC && remAC.state === "suspended") remAC.resume();
 }
 document.addEventListener("pointerdown", unlockAudio);
-function remBeep(f, d) {
+function remBeep(f, d, vol) {
   if (!remAC) return;
-  const o = remAC.createOscillator(), g = remAC.createGain();
-  o.frequency.value = f; g.gain.value = 0.3; o.connect(g); g.connect(remAC.destination); o.start(); o.stop(remAC.currentTime + d);
+  const o = remAC.createOscillator(), g = remAC.createGain(), t0 = remAC.currentTime, v = vol || 0.3;
+  o.frequency.value = f;
+  g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(v, t0 + 0.01); g.gain.linearRampToValueAtTime(0, t0 + d);
+  o.connect(g); g.connect(remAC.destination); o.start(t0); o.stop(t0 + d + 0.02);
 }
 function remRingOnce() {
   if (!isNative) { remBeep(880, .2); setTimeout(() => remBeep(1100, .2), 250); setTimeout(() => remBeep(880, .2), 500); }
@@ -1514,12 +1964,10 @@ function remTick() {
 // ====================================================================
 //  Backup și restaurare
 // ====================================================================
-function backupJson() {
-  return JSON.stringify({ v: 2, saved: Date.now(), tasks: tasksGet(), history: histGet(), reminders: remGet(), dict: dictGet(), terms: termGet() }, null, 1);
-}
+function backupJson() { return JSON.stringify(backupObj(), null, 1); }
 async function doBackup() {
   const ok = await shareFile(`secretara-backup-${dkey(new Date())}.json`, backupJson(), "Backup Secretara", "application/json");
-  if (ok) { localStorage.setItem("lastBackup", String(Date.now())); byId("setInfo").textContent = "Backup creat. Salvează-l în Drive, e-mail sau WhatsApp (către tine)."; }
+  if (ok) { lsSetRaw("lastBackup", String(Date.now())); byId("setInfo").textContent = "Backup creat. Salvează-l în Drive, e-mail sau WhatsApp (către tine)."; }
 }
 function mergeKey(key, list) {
   if (!Array.isArray(list)) return 0;
@@ -1534,8 +1982,8 @@ function importFile(ev) {
   rd.onload = () => {
     try {
       const d = JSON.parse(rd.result);
-      const n = mergeKey("tasks", d.tasks) + mergeKey("history", d.history) + mergeKey("reminders", d.reminders) + mergeKey("dict", d.dict) + mergeKey("terms", d.terms);
-      refresh(); syncNative();
+      const n = applyBackup(d, false);
+      migrateReminders(); refresh(); syncNative();
       byId("setInfo").textContent = `Restaurat: ${n} elemente adăugate.`;
     } catch (e) { byId("setInfo").textContent = "Fișier invalid."; }
   };
@@ -1558,9 +2006,12 @@ function startFromLink() { window.scrollTo(0, 0); if (isNative && !nListening) s
 //  Pornire
 // ====================================================================
 if (isNative) document.body.classList.add("native");
+migrateReminders();
+archiveExpired();
 openView(lastTab);
 renderBadges();
 window.scrollTo(0, 0);
+autoRestore();
 syncNative();
 remTick();
 setInterval(remTick, 1000);
