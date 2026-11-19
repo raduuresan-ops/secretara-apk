@@ -50,10 +50,20 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
+      # amprenta semnaturii: trebuie sa fie ACEEASI la fiecare build, altfel update-ul nu se instaleaza
+      - name: Verifica semnatura
+        id: sig
+        run: |
+          BT=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)
+          FP=$("$ANDROID_HOME/build-tools/$BT/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk | grep -m1 "SHA-256" | awk '{print $NF}')
+          echo "Semnatura SHA-256: $FP"
+          echo "fp=$FP" >> "$GITHUB_OUTPUT"
+          echo "short=${FP:0:8}" >> "$GITHUB_OUTPUT"
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Secretara build ${{ github.run_number }} ${{ steps.full.outcome == 'success' && '(complet)' || '(fara widget)' }}
+          name: Secretara build ${{ github.run_number }} ${{ steps.full.outcome == 'success' && '(complet)' || '(fara widget)' }} · semnatura ${{ steps.sig.outputs.short }}
+          body: "Semnatura SHA-256: ${{ steps.sig.outputs.fp }} — trebuie sa fie aceeasi la toate build-urile."
           files: android/app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
         with:
