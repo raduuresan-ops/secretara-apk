@@ -106,6 +106,9 @@ body.pc .app{max-width:900px}
     </div>
   </header>
 
+  <!-- PC: cerere pentru notificările Windows (dispare după ce sunt permise) -->
+  <div id="pcBar" class="pcOnly"></div>
+
   <!-- DICTARE: rămâne mereu sus -->
   <div class="card" id="recCard">
     <div class="recRow">
@@ -225,7 +228,8 @@ body.pc .app{max-width:900px}
 
     <div class="item pcOnly" style="margin-top:14px;">
       <b>💻 Pop-up-uri pe calculator</b>
-      <p class="calHint">Memento-urile și alarmele apar fără sunet, ca mesaje în dreapta ecranului: în pagină și, dacă le permiți, ca notificări Windows (în colțul din dreapta jos). Apar doar cât timp Secretara e deschisă (o filă în browser sau aplicația instalată).</p>
+      <p class="calHint">Memento-urile și alarmele apar fără sunet ca notificări Windows, în colțul din dreapta jos (deasupra ceasului), chiar dacă lucrezi în alt program, plus un mesaj în dreapta paginii. Secretara trebuie doar să fie deschisă undeva: o filă în browser sau aplicația instalată, poate fi și minimizată. Ce a trecut cât timp a fost închisă îți apare când o deschizi.</p>
+      <p class="calHint">Sfat: instaleaz-o ca aplicație și pune-o să pornească odată cu Windows (pașii sunt în ❓ Ajutor → Calculator).</p>
       <button class="doneBtn" onclick="pcNotifAsk()">🔔 Permite notificările Windows</button>
       <button onclick="testAlarm()">🧪 Test pop-up (peste 10 secunde)</button>
       <p id="pcNotifInfo" class="calHint"></p>
@@ -307,8 +311,9 @@ body.pc .app{max-width:900px}
       <label class="lbl" for="alarmsHere">Pe acest dispozitiv apar / sună</label>
       <select id="alarmsHere" onchange="alarmsHereChanged()">
         <option value="all">⏰ Alarmele și 🔔 memento-urile</option>
-        <option value="memo">🔔 Doar memento-urile (fără alarme)</option>
-        <option value="none">🔕 Nimic (le văd doar în listă)</option>
+        <option value="memo">🔔 Memento-urile sună, alarmele doar iconiță</option>
+        <option value="silent">🔕 Nimic nu sună, doar iconiță în bara de sus</option>
+        <option value="none">🚫 Nimic (le văd doar în listă)</option>
       </select>
       <p id="alarmsInfo" class="calHint"></p>
     </div>
@@ -412,6 +417,15 @@ body.pc .app{max-width:900px}
       <li>Dacă telefonul aude greșit un cuvânt, adaugă în Dicționar: „es er el” → „SRL”.</li>
       <li>Dacă corectezi manual textul dictat înainte de salvare, aplicația îți propune să învețe corectura.</li>
       <li>Termenii importanți (ex. „Popescu Construcții”) corectează cuvintele care seamănă și ajută la alegerea variantei corecte.</li>
+    </ul>
+
+    <h3>💻 Calculator</h3>
+    <ul>
+      <li>Scrii textul (ex. „mâine la ora 12:00 alarmă plată factură”) și apeși <b>Ctrl+Enter</b>.</li>
+      <li>Notificările apar în dreapta jos doar dacă le-ai permis (banda galbenă de sus) și Secretara e deschisă (poate fi minimizată).</li>
+      <li><b>Instalează ca aplicație</b>: în Edge meniul ⋯ → Apps → Install this site as an app; în Chrome meniul ⋮ → Cast, save and share → Install page as app.</li>
+      <li><b>Pornire odată cu Windows</b>: în Edge deschide <b>edge://apps</b> → la Secretara ⋯ → bifează „Auto-start on device login”; în Chrome deschide <b>chrome://apps</b> → clic dreapta pe Secretara → „Start app when you sign in”.</li>
+      <li>Dacă nu apar notificările: Windows Settings → System → Notifications → să fie pornite pentru Edge / Chrome, iar „Do not disturb” oprit.</li>
     </ul>
 
     <h3>⚙️ Setări utile</h3>
@@ -1303,8 +1317,11 @@ async function ensureChannel(c) {
   const o = { id: c.id, name: c.name, description: c.alarm ? "Alarme programate de Secretara (sună și vibrează)" : "Memento-uri programate de Secretara",
     importance: c.alarm ? 5 : 4, visibility: 1, vibration: true, lights: !!c.alarm };
   if (c.sound) o.sound = c.sound;
+  if (c.silent) { o.importance = 2; o.vibration = false; o.lights = false; o.description = "Alarme și memento-uri fără sunet: doar iconiță în bara de sus"; }
   try { await LN.createChannel(o); madeChannels.add(c.id); } catch (e) {}
 }
+// canal fără sunet și fără vibrație: notificarea apare doar ca iconiță în bara de sus
+const SILENT_CHANNEL = { id: "silent_v1", name: "Fără sunet (doar iconiță)", alarm: false, silent: true };
 let nativeReady = false;
 async function ensureNative() {
   if (!isNative || nativeReady) return;
@@ -1320,7 +1337,8 @@ async function scheduleNative(r, atOverride, nidOverride) {
   const rep = !atOverride && r.repeat;
   const when = atOverride || r.due;
   if (!isNative || r.done || (!rep && when <= Date.now() + 1500)) return;
-  if (!notifOk(r)) return; // pe acest telefon nu sună (Setări → Sincronizare → „Pe acest telefon sună”)
+  const mode = notifMode(r); // Setări → Sincronizare → „Pe acest dispozitiv apar / sună”
+  if (mode === "off") return;
   await ensureNative();
   const LN = P("LocalNotifications"); if (!LN) return;
   try {
@@ -1335,7 +1353,7 @@ async function scheduleNative(r, atOverride, nidOverride) {
       if (r.repeat === "monthly") on.day = d.getDate();
       schedule = { on, allowWhileIdle: true };
     } else schedule = { at: new Date(when), allowWhileIdle: true };
-    const ch = r.type === "alarm" ? alarmChannel() : memoChannel();
+    const ch = mode === "silent" ? SILENT_CHANNEL : r.type === "alarm" ? alarmChannel() : memoChannel();
     await ensureChannel(ch);
     await LN.schedule({ notifications: [{
       id: nidOverride || r.nid, title: (r.repeat ? "🔁 " : "") + (r.type === "alarm" ? "⏰ Alarmă" : "🔔 Memento"), body: r.text,
@@ -1376,7 +1394,7 @@ function onNotifAction(ev) {
     const r = remGet().find(x => x.id === rid); if (!r) return;
     if (ev.actionId === "done") remDone(r.id);
     else if (ev.actionId === "snooze") remSnooze(r.id, 5);
-    else if (!r.done) showRemAlert(r, false);
+    else if (!r.done && notifOk(r)) showRemAlert(r, false); // la cele fără sunet doar deschidem aplicația
     refresh();
   } catch (e) {}
 }
@@ -2151,7 +2169,7 @@ function renderSettings() {
   byId("alarmsHere").value = alarmsHere();
   syncRender(); syncEnsure();
 }
-const APP_VER = "v3.7 · 20.11.2026";
+const APP_VER = "v3.8 · 20.11.2026";
 async function sndChanged() {
   lsSetRaw("sndAlarm", byId("sndAlarm").value);
   lsSetRaw("sndLen", byId("sndLen").value);
@@ -2365,7 +2383,21 @@ function showToast(r, late) {
     } catch (e) {}
   }
 }
+// bandă sus pe PC până când sunt permise notificările Windows
+function pcBarRender() {
+  const bar = byId("pcBar"); if (!bar || isNative) return;
+  bar.replaceChildren();
+  if (!("Notification" in window) || Notification.permission === "granted") return;
+  const denied = Notification.permission === "denied";
+  bar.append(el("div", { class: "item warnbox", style: "margin:0 0 12px" }, [
+    el("div", { text: denied
+      ? "🚫 Notificările Windows sunt blocate pentru Secretara, așa că memento-urile apar doar în pagină. Apasă pe iconița din stânga adresei (lacăt / setări) → Notificări → Permite, apoi reîncarcă pagina."
+      : "🔔 Ca memento-urile și alarmele să apară în colțul din dreapta jos al ecranului (ca la mailuri), chiar dacă lucrezi în alt program, permite notificările:" }),
+    denied ? "" : el("button", { class: "doneBtn", text: "🔔 Permite notificările Windows", onclick: pcNotifAsk })
+  ]));
+}
 function pcNotifRender() {
+  pcBarRender();
   const i = byId("pcNotifInfo"); if (!i || isNative) return;
   if (!("Notification" in window)) { i.textContent = "Browserul nu are notificări; mesajele apar doar în pagină."; return; }
   i.textContent = { granted: "✅ Notificările Windows sunt permise.",
@@ -2376,6 +2408,9 @@ async function pcNotifAsk() {
   if (!("Notification" in window)) { pcNotifRender(); return; }
   try { await Notification.requestPermission(); } catch (e) {}
   pcNotifRender();
+  if (Notification.permission === "granted") {
+    try { new Notification("✅ Secretara", { body: "Așa vor apărea memento-urile și alarmele, fără sunet.", silent: true }); } catch (e) {}
+  }
 }
 function showRemAlert(r, late) {
   if (!isNative) { showToast(r, late); return; }
@@ -2423,8 +2458,19 @@ function remTick() {
 // ====================================================================
 //  Pe acest telefon sună: toate / doar memento-urile / nimic
 // ====================================================================
-function alarmsHere() { const v = localStorage.getItem("alarmsHere"); return v === "memo" || v === "none" ? v : "all"; }
-function notifOk(r) { const m = alarmsHere(); return !!(r && (r.test || m === "all" || (m === "memo" && r.type !== "alarm"))); }
+function alarmsHere() { const v = localStorage.getItem("alarmsHere"); return ["memo", "silent", "none"].includes(v) ? v : "all"; }
+// cum apare un memento pe acest dispozitiv: "sound" = normal, "silent" = doar iconiță în bara de sus (fără sunet), "off" = deloc
+function notifMode(r) {
+  if (!r) return "off";
+  if (r.test) return "sound";
+  const m = alarmsHere();
+  if (m === "all") return "sound";
+  if (m === "memo") return r.type === "alarm" ? "silent" : "sound";
+  if (m === "silent") return "silent";
+  return "off";
+}
+// ecranul mare cu sunet (telefon) doar pentru „sound”; pe PC pop-up-ul (oricum fără sunet) apare dacă nu e „off”
+function notifOk(r) { const m = notifMode(r); return isNative ? m === "sound" : m !== "off"; }
 async function alarmsHereChanged() {
   localStorage.setItem("alarmsHere", byId("alarmsHere").value);
   const info = byId("alarmsInfo");
@@ -2433,9 +2479,10 @@ async function alarmsHereChanged() {
     for (const r of remGet()) { if (!r.test) await cancelNative(r); }
     await syncNative();
   }
-  info.textContent = { all: "✅ Pe acest telefon sună alarmele și memento-urile.",
-    memo: "✅ Pe acest telefon sună doar memento-urile. Alarmele apar doar în listă.",
-    none: "✅ Pe acest telefon nu sună nimic. Memento-urile și alarmele apar doar în listă." }[alarmsHere()];
+  info.textContent = { all: "✅ Pe acest dispozitiv sună alarmele și memento-urile.",
+    memo: "✅ Memento-urile sună; alarmele apar fără sunet, doar ca iconiță în bara de sus.",
+    silent: "✅ Nimic nu sună; alarmele și memento-urile apar doar ca iconiță în bara de sus (o vezi când tragi bara în jos).",
+    none: "✅ Nu apare nimic. Memento-urile și alarmele se văd doar în listă." }[alarmsHere()];
 }
 
 // ====================================================================
@@ -2800,6 +2847,7 @@ else {
   tb.placeholder = "Scrie aici… ex.: mâine la ora 12:00 alarmă plată factură";
   tb.addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveText("auto"); } });
   setStatus("");
+  pcBarRender();
   syncBoot = () => syncEnsure(); // pe PC încărcăm mereu sincronizarea (ca să apară formularul de conectare)
 }
 migrateReminders();
