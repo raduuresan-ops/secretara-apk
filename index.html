@@ -81,6 +81,21 @@ details summary{cursor:pointer;color:var(--muted);margin-top:14px}
 #remAlert{position:fixed;inset:0;display:none;background:rgba(0,0,0,.88);z-index:99;padding:20px;overflow:auto}
 .remCard{background:#252b3b;border:2px solid var(--accent);border-radius:16px;padding:20px;margin:30px auto 14px;max-width:520px;text-align:center}
 .remCard .big{font-size:22px;margin:10px 0;word-break:break-word}
+/* Setări pe secțiuni */
+details.sgrp{background:var(--item);border-radius:10px;margin-top:10px;padding:0 12px}
+details.sgrp>summary{list-style:none;cursor:pointer;padding:13px 0;font-weight:600;font-size:15px;color:#fff;display:flex;justify-content:space-between;align-items:center;margin:0}
+details.sgrp>summary::-webkit-details-marker{display:none}
+details.sgrp>summary::after{content:"▸";color:var(--muted);transition:transform .2s}
+details.sgrp[open]>summary::after{transform:rotate(90deg)}
+details.sgrp[open]{padding-bottom:12px}
+details.sgrp .sub{display:block;margin-top:16px;font-size:14px}
+/* liste (sarcini cu elemente) */
+.lst{margin:6px 0 4px;padding:0;list-style:none}
+.lst li{display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-top:1px solid #343b4d;font-size:14px}
+.lst li:first-child{border-top:none}
+.lst input{width:auto;margin:2px 0 0;flex:0 0 auto;transform:scale(1.2)}
+.lst li.ok span{text-decoration:line-through;color:var(--muted)}
+.lst li span{flex:1 1 auto;word-break:break-word}
 /* varianta PC (browser): doar text, fără microfon și fără sunete */
 body.pc .nativeOnly,body.pc #btnRecord{display:none}
 body:not(.pc) .pcOnly{display:none}
@@ -217,35 +232,49 @@ body.pc .app{max-width:900px}
     <div id="termList"></div>
   </section>
 
-  <!-- SETĂRI -->
+  <!-- SETĂRI: grupate pe secțiuni care se deschid / se închid -->
   <section class="card view" id="v-settings" hidden>
     <h2>⚙️ Setări</h2>
     <button onclick="backToTab()">⬅️ Înapoi</button>
     <p id="setInfo" class="calHint"></p>
-    <button class="nativeOnly" onclick="settingsCheck()">🔐 Verifică / cere permisiuni</button>
-    <button class="nativeOnly" onclick="testAlarm()">⏰ Test alarmă (peste 15 secunde)</button>
-    <button id="btnSnap" class="nativeOnly" onclick="toggleSnap()"></button>
 
-    <div class="item pcOnly" style="margin-top:14px;">
-      <b>💻 Pop-up-uri pe calculator</b>
-      <p class="calHint">Memento-urile și alarmele apar fără sunet ca notificări Windows, în colțul din dreapta jos (deasupra ceasului), chiar dacă lucrezi în alt program, plus un mesaj în dreapta paginii. Secretara trebuie doar să fie deschisă undeva: o filă în browser sau aplicația instalată, poate fi și minimizată. Ce a trecut cât timp a fost închisă îți apare când o deschizi.</p>
-      <p class="calHint">Sfat: instaleaz-o ca aplicație și pune-o să pornească odată cu Windows (pașii sunt în ❓ Ajutor → Calculator).</p>
-      <button class="doneBtn" onclick="pcNotifAsk()">🔔 Permite notificările Windows</button>
-      <button onclick="testAlarm()">🧪 Test pop-up (peste 10 secunde)</button>
-      <p id="pcNotifInfo" class="calHint"></p>
-    </div>
+    <details class="sgrp" data-g="notif">
+      <summary>🔔 Alarme și notificări</summary>
+      <label class="lbl" for="alarmsHere">Pe acest dispozitiv apar / sună</label>
+      <select id="alarmsHere" onchange="alarmsHereChanged()">
+        <option value="all">⏰ Alarmele și 🔔 memento-urile</option>
+        <option value="memo">🔔 Memento-urile sună, alarmele doar iconiță</option>
+        <option value="silent">🔕 Nimic nu sună, doar iconiță în bara de sus</option>
+        <option value="none">🚫 Nimic (le văd doar în listă)</option>
+      </select>
+      <p id="alarmsInfo" class="calHint"></p>
+      <div class="nativeOnly">
+        <button onclick="settingsCheck()">🔐 Verifică / cere permisiuni</button>
+        <button onclick="testAlarm()">⏰ Test alarmă (peste 15 secunde)</button>
+      </div>
+      <div class="pcOnly">
+        <p class="calHint">Memento-urile și alarmele apar fără sunet ca notificări Windows, în colțul din dreapta jos (deasupra ceasului), chiar dacă lucrezi în alt program, plus un mesaj în dreapta paginii. Secretara trebuie doar să fie deschisă undeva: o filă în browser sau aplicația instalată, poate fi și minimizată. Ce a trecut cât timp a fost închisă îți apare când o deschizi.</p>
+        <p class="calHint">Sfat: instaleaz-o ca aplicație și pune-o să pornească odată cu Windows (pașii sunt în ❓ Ajutor → Calculator).</p>
+        <button class="doneBtn" onclick="pcNotifAsk()">🔔 Permite notificările Windows</button>
+        <button onclick="testAlarm()">🧪 Test pop-up (peste 10 secunde)</button>
+        <p id="pcNotifInfo" class="calHint"></p>
+      </div>
+      <label class="lbl" for="defTime">Ora folosită când nu spui ora (ex. „vineri alarmă …”)</label>
+      <input id="defTime" type="time" onchange="defTimeChanged()" />
+      <div class="nativeOnly">
+        <b class="sub">📱 Ca alarmele să sune sigur (Samsung)</b>
+        <ol class="calHint" style="padding-left:18px;">
+          <li>Setări → Aplicații → Secretara → Baterie → <b>Nerestricționat</b><br><span class="en">Settings → Apps → Secretara → Battery → Unrestricted</span></li>
+          <li>Setări → Baterie → Limite de utilizare în fundal → scoate Secretara din „Aplicații adormite” și „Aplicații adormite profund”<br><span class="en">Settings → Battery → Background usage limits → remove Secretara from Sleeping apps and Deep sleeping apps</span></li>
+          <li>Setări → Aplicații → Secretara → Notificări → canalele „Alarme” și „Memento-uri” active, cu sunet<br><span class="en">Settings → Apps → Secretara → Notifications</span></li>
+          <li>Setări → Aplicații → Secretara → Alarme și mementouri → Permis<br><span class="en">Settings → Apps → Secretara → Alarms &amp; reminders → Allowed</span></li>
+          <li>Nu forța oprirea aplicației din „Aplicații recente”: o oprire forțată poate anula alarmele până la următoarea deschidere.</li>
+        </ol>
+      </div>
+    </details>
 
-    <div class="item" style="margin-top:14px;">
-      <b>📁 Subfoldere</b>
-      <p class="calHint">Fiecare subfolder are un nume și cuvinte cheie (despărțite prin virgulă). Când dictezi sau scrii un text care conține un cuvânt cheie (ex. „card”, „tahograf”), el intră automat în subfolderul respectiv. Contează și începutul cuvântului: „card” prinde și „cardul”. Bifează unde apare subfolderul: la <b>Sarcini</b> și/sau la <b>Memento &amp; alarme</b> (acestea apar și în Calendar și Istoric). Poți muta manual orice element cu butonul 📁.</p>
-      <div id="folderList"></div>
-      <button class="doneBtn" onclick="folderAdd()">➕ Subfolder nou</button>
-      <button onclick="folderReapply()">🔄 Aplică cuvintele cheie pe ce există deja</button>
-      <p id="folderInfo" class="calHint"></p>
-    </div>
-
-    <div class="item nativeOnly" style="margin-top:14px;">
-      <b>🔊 Sunete și confirmare</b>
+    <details class="sgrp nativeOnly" data-g="snd">
+      <summary>🔊 Sunete și voce</summary>
       <label class="lbl" for="sndAlarm">Sunet alarmă</label>
       <select id="sndAlarm" onchange="sndChanged()"></select>
       <label class="lbl" for="sndLen">Cât sună alarma</label>
@@ -280,23 +309,54 @@ body.pc .app{max-width:900px}
       <button onclick="ttsTest()">▶️ Testează vocea</button>
       <button onclick="ttsInstall()">📥 Instalează / verifică vocea română</button>
       <p id="ttsInfo" class="calHint"></p>
-      <label class="lbl" for="defTime">Ora folosită când nu spui ora (ex. „vineri alarmă …”)</label>
-      <input id="defTime" type="time" onchange="defTimeChanged()" />
       <p id="sndInfo" class="calHint"></p>
-    </div>
+    </details>
 
-    <div class="item nativeOnly" style="margin-top:14px;">
-      <b>🌐 Româna offline (dictare fără internet)</b>
+    <details class="sgrp nativeOnly" data-g="dict">
+      <summary>🎤 Dictare</summary>
+      <label class="lbl" for="dictMax">Cât poate dura o dictare (apoi microfonul se oprește singur, textul rămâne în căsuță)</label>
+      <select id="dictMax" onchange="dictOptChanged()">
+        <option value="1">1 minut</option>
+        <option value="3">3 minute</option>
+        <option value="5">5 minute</option>
+        <option value="10">10 minute</option>
+        <option value="20">20 minute</option>
+        <option value="0">Fără limită (până apeși Stop sau spui „gata”)</option>
+      </select>
+      <label class="lbl" for="dictSil">Oprește singur dacă nu vorbești deloc</label>
+      <select id="dictSil" onchange="dictOptChanged()">
+        <option value="0">Niciodată (doar Stop sau „gata”)</option>
+        <option value="15">după 15 secunde de liniște</option>
+        <option value="30">după 30 de secunde de liniște</option>
+        <option value="60">după 1 minut de liniște</option>
+      </select>
+      <p id="dictInfo" class="calHint">Pentru liste lungi: spune „virgulă” între elemente și nu face pauze prea lungi; la fiecare pauză telefonul repornește singur microfonul (durează sub o secundă).</p>
+      <button id="btnSnap" onclick="toggleSnap()"></button>
+      <b class="sub">🌐 Româna offline (dictare fără internet)</b>
       <p class="calHint">Descarcă pachetul de limbă română pentru recunoașterea vocală direct pe telefon. Cu el, dictarea merge și fără internet. Necesită Android 13 sau mai nou. Dacă descărcarea directă nu merge, folosește „Setări voce Google” → Recunoaștere vocală offline → Română.</p>
       <button onclick="offlineCheck()">🔍 Verifică</button>
       <button class="doneBtn" onclick="offlineDownload()">📥 Descarcă româna offline</button>
       <button onclick="offlineSettings()">⚙️ Setări voce Google</button>
       <p id="offInfo" class="calHint"></p>
-    </div>
+      <b class="sub">🎙️ Recunoaștere vocală Google</b>
+      <p class="calHint">Setări → Aplicații → Alege aplicațiile implicite → Aplicație asistent digital → Intrare vocală → Google<br><span class="en">Settings → Apps → Choose default apps → Digital assistant app → Voice input → Google</span></p>
+      <p class="calHint">Dacă apeși 🎤 și nu apare text: așteaptă mesajul „🎙️ Ascult… vorbește”, apoi vorbește. Aplicația repornește singură microfonul dacă se blochează. Dacă tot nu merge, verifică să fie actualizată aplicația Google și să aibă permisiunea Microfon.</p>
+      <b class="sub">🎤 Widget și scurtătură</b>
+      <p class="calHint">Widget: apasă lung pe ecranul principal → Widgeturi → Secretara, apoi trage butonul „Dictează”. Scurtătură: apasă lung pe iconița aplicației → „Dictează”. Ambele deschid aplicația și pornesc microfonul.</p>
+    </details>
 
-    <div class="item" style="margin-top:14px;">
-      <b>☁️ Sincronizare între telefoane</b>
-      <p class="calHint">Sarcinile, memento-urile, istoricul, dicționarul și subfolderele se sincronizează automat pe toate telefoanele conectate cu același cont. Merge și fără internet: modificările se trimit când revine conexiunea. Setările (sunete, voce, ora implicită) rămân separate pe fiecare telefon.</p>
+    <details class="sgrp" data-g="folders">
+      <summary>📁 Subfoldere</summary>
+      <p class="calHint">Fiecare subfolder are un nume și cuvinte cheie (despărțite prin virgulă). Când dictezi sau scrii un text care conține un cuvânt cheie (ex. „card”, „tahograf”), el intră automat în subfolderul respectiv. Contează și începutul cuvântului: „card” prinde și „cardul”. Bifează unde apare subfolderul: la <b>Sarcini</b> și/sau la <b>Memento &amp; alarme</b> (acestea apar și în Calendar și Istoric). Poți muta manual orice element cu butonul 📁. Poți face un subfolder și din voce: „fă un folder la sarcini cu numele Dosare”.</p>
+      <div id="folderList"></div>
+      <button class="doneBtn" onclick="folderAdd()">➕ Subfolder nou</button>
+      <button onclick="folderReapply()">🔄 Aplică cuvintele cheie pe ce există deja</button>
+      <p id="folderInfo" class="calHint"></p>
+    </details>
+
+    <details class="sgrp" data-g="sync">
+      <summary>☁️ Sincronizare</summary>
+      <p class="calHint">Sarcinile, listele, memento-urile, istoricul, dicționarul și subfolderele se sincronizează automat pe toate dispozitivele conectate cu același cont. Merge și fără internet: modificările se trimit când revine conexiunea. Setările (sunete, voce, ora implicită) rămân separate pe fiecare dispozitiv.</p>
       <div id="syncOut">
         <input id="syncEmail" type="email" placeholder="Email" autocomplete="username" />
         <input id="syncPass" type="password" placeholder="Parola" autocomplete="current-password" />
@@ -308,52 +368,26 @@ body.pc .app{max-width:900px}
         <button onclick="syncLogout()">🚪 Deconectează</button>
       </div>
       <p id="syncInfo" class="calHint"></p>
-      <label class="lbl" for="alarmsHere">Pe acest dispozitiv apar / sună</label>
-      <select id="alarmsHere" onchange="alarmsHereChanged()">
-        <option value="all">⏰ Alarmele și 🔔 memento-urile</option>
-        <option value="memo">🔔 Memento-urile sună, alarmele doar iconiță</option>
-        <option value="silent">🔕 Nimic nu sună, doar iconiță în bara de sus</option>
-        <option value="none">🚫 Nimic (le văd doar în listă)</option>
-      </select>
-      <p id="alarmsInfo" class="calHint"></p>
-    </div>
+    </details>
 
-    <div class="item" style="margin-top:14px;">
-      <b>🔄 Actualizări</b>
+    <details class="sgrp" data-g="upd">
+      <summary>🔄 Actualizări</summary>
       <p class="calHint nativeOnly">Aplicația caută singură versiuni noi la pornire. Cele mai multe se descarcă singure (fără APK) și se aplică după ce închizi și redeschizi aplicația. Doar când se schimbă partea de Android îți cere să instalezi un APK nou, cu un singur buton. Datele rămân în ambele cazuri.</p>
       <p class="calHint pcOnly">Pe calculator ai mereu ultima versiune: dacă apare una nouă cât timp pagina e deschisă, îți spune să reîncarci pagina.</p>
       <button onclick="updCheck(true)">🔍 Caută update acum</button>
       <p id="updInfo" class="calHint"></p>
-    </div>
+    </details>
 
-    <div class="item" style="margin-top:14px;">
-      <b>💾 Backup</b>
+    <details class="sgrp" data-g="bk">
+      <summary>💾 Backup</summary>
       <p class="calHint">Creează un fișier cu toate datele (sarcini, memento-uri, istoric, dicționar, setări) și îl trimiți în Drive, e-mail sau WhatsApp. Îl poți restaura după reinstalare.</p>
       <p class="calHint nativeOnly">🛟 În plus, aplicația salvează automat o copie la fiecare modificare (în memoria aplicației și în <b>Documents/Secretara/secretara-autobackup.json</b>). Dacă după un update datele lipsesc, sunt restaurate automat la pornire.</p>
       <p id="autoBkInfo" class="calHint"></p>
       <button class="doneBtn" onclick="doBackup()">📤 Backup (trimite fișier)</button>
       <button onclick="byId('fileImport').click()">📥 Restaurează din fișier</button>
       <input type="file" id="fileImport" accept=".json,application/json" style="display:none" onchange="importFile(event)" />
-    </div>
+    </details>
 
-    <div class="item nativeOnly" style="margin-top:14px;">
-      <b>🎤 Widget și scurtătură</b>
-      <p class="calHint">Widget: apasă lung pe ecranul principal → Widgeturi → Secretara, apoi trage butonul „Dictează”. Scurtătură: apasă lung pe iconița aplicației → „Dictează”. Ambele deschid aplicația și pornesc microfonul.</p>
-    </div>
-
-    <div class="item nativeOnly" style="margin-top:14px;">
-      <b>📱 Ca alarmele să sune sigur (Samsung)</b>
-      <ol class="calHint" style="padding-left:18px;">
-        <li>Setări → Aplicații → Secretara → Baterie → <b>Nerestricționat</b><br><span class="en">Settings → Apps → Secretara → Battery → Unrestricted</span></li>
-        <li>Setări → Baterie → Limite de utilizare în fundal → scoate Secretara din „Aplicații adormite” și „Aplicații adormite profund”<br><span class="en">Settings → Battery → Background usage limits → remove Secretara from Sleeping apps and Deep sleeping apps</span></li>
-        <li>Setări → Aplicații → Secretara → Notificări → canalele „Alarme” și „Memento-uri” active, cu sunet<br><span class="en">Settings → Apps → Secretara → Notifications</span></li>
-        <li>Setări → Aplicații → Secretara → Alarme și mementouri → Permis<br><span class="en">Settings → Apps → Secretara → Alarms &amp; reminders → Allowed</span></li>
-        <li>Nu forța oprirea aplicației din „Aplicații recente”: o oprire forțată poate anula alarmele până la următoarea deschidere.</li>
-      </ol>
-      <b>🎙️ Recunoaștere vocală Google</b>
-      <p class="calHint">Setări → Aplicații → Alege aplicațiile implicite → Aplicație asistent digital → Intrare vocală → Google<br><span class="en">Settings → Apps → Choose default apps → Digital assistant app → Voice input → Google</span></p>
-      <p class="calHint">Dacă apeși 🎤 și nu apare text: așteaptă mesajul „🎙️ Ascult… vorbește”, apoi vorbește. Aplicația repornește singură microfonul dacă se blochează. Dacă tot nu merge, verifică să fie actualizată aplicația Google și să aibă permisiunea Microfon.</p>
-    </div>
     <p class="calHint" id="verInfo" style="text-align:center;"></p>
   </section>
 
@@ -391,6 +425,9 @@ body.pc .app{max-width:900px}
       <li>Ore: „la 3 și un sfert”, „la 7 fără un sfert”, „la ora 14:30”</li>
       <li>Repetitive: „în fiecare zi la 8 …”, „în fiecare luni la 9 …”, „lunar pe 5 la 10 …”</li>
       <li>Mai multe deodată: „mâine la 9 alarmă X <b>și apoi</b> la 12 memento Y”</li>
+      <li><b>Liste</b>: „pune în liste următoarea listă cuprinzând: corp A virgulă corp B virgulă de mers la X” → o listă cu elementele unul sub altul, fiecare cu bifă (în subfolderul 📁 Liste). Între elemente spune „virgulă” (sau „punct și virgulă”, „rând nou”).</li>
+      <li>Listă cu nume, într-un subfolder: „fă o listă de cumpărături în folderul Casa cu următoarele: pâine virgulă lapte”.</li>
+      <li><b>Subfolder nou</b>: „fă un folder la sarcini cu numele Dosare” – sau totul deodată: „fă un folder la sarcini cu numele Dosare, apoi fă o listă acolo cu următoarele elemente: …”.</li>
       <li>Sarcini: cuvintele <b>urgent</b> 🔴, <b>important</b> 🟡, <b>azi</b> / <b>mâine</b> se transformă în prioritate și termen.</li>
     </ul>
 
@@ -1093,15 +1130,45 @@ function tasksSorted() {
   const rank = t => (t.priority === "urgent" ? 0 : t.priority === "important" ? 1 : 2);
   return tasksGet().slice().sort((a, b) => rank(a) - rank(b) || (b.id - a.id));
 }
-function formatTask(t) { return `${t.text} (${t.day} ${t.time})`; }
+function formatTask(t) {
+  const items = Array.isArray(t.list) ? t.list.map(x => `\n${x.d ? "✔" : "•"} ${x.t}`).join("") : "";
+  return `${t.text} (${t.day} ${t.time})${items}`;
+}
+// ---------- liste: o sarcină cu elemente, fiecare pe rândul ei, cu bifă ----------
+function listView(t, key, editable) {
+  const ul = el("ul", { class: "lst" });
+  (t.list || []).forEach((x, i) => {
+    const cb = el("input", { type: "checkbox" }); cb.checked = !!x.d;
+    if (!editable) cb.disabled = true;
+    else cb.addEventListener("change", () => listToggle(key, t.id, i, cb.checked));
+    ul.append(el("li", { class: x.d ? "ok" : "" }, [cb, el("span", { text: x.t })]));
+  });
+  return ul;
+}
+function listToggle(key, id, i, on) {
+  const l = arr(lsGet(key, [])), x = l.find(y => y.id === id);
+  if (!x || !x.list || !x.list[i]) return;
+  x.list[i].d = on; lsSet(key, l); refresh();
+}
+function listAddItem(key, id) {
+  const v = prompt("Element nou (poți scrie mai multe, despărțite prin virgulă):");
+  if (!v || !v.trim()) return;
+  const l = arr(lsGet(key, [])), x = l.find(y => y.id === id); if (!x) return;
+  x.list = (x.list || []).concat(splitItems(v).map(s => ({ t: s, d: false })));
+  lsSet(key, l); refresh();
+}
 function taskItem(t) {
   const box = el("div", { class: "item" });
   const extra = (t.priority === "urgent" ? " 🔴" : t.priority === "important" ? " 🟡" : "") + (t.due ? ` 📅 ${t.due}` : "");
+  const isList = Array.isArray(t.list);
+  const doneN = isList ? t.list.filter(x => x.d).length : 0;
   box.append(
-    el("div", { class: "txt", text: t.text + extra }),
+    el("div", { class: "txt", text: (isList ? "📋 " : "") + t.text + extra + (isList ? `  (${doneN}/${t.list.length})` : "") }),
+    isList ? listView(t, "tasks", true) : "",
     el("small", { text: `${t.day} ${t.time}` }, [folderTag(t) || ""]),
     el("div", { class: "row" }, [
       el("button", { class: "doneBtn", text: "✔ Gata", onclick: () => markDone(t.id) }),
+      isList ? el("button", { text: "➕ Element", onclick: () => listAddItem("tasks", t.id) }) : "",
       el("button", { text: "✏️ Edit", onclick: () => editInline(box, t, "tasks") }),
       el("button", { text: "📁", title: "Mută în subfolder", onclick: () => folderPicker(box, t, "tasks", "tasks") }),
       el("button", { text: "📤 Trimite", onclick: () => shareText(formatTask(t)) }),
@@ -1115,7 +1182,7 @@ function renderTasks() {
   const every = tasksSorted();
   renderChips("tasks", "tasks", every);
   const all = every.filter(t => inFolder(t, "tasks"));
-  const shown = f ? all.filter(t => normEq(String(t.text)).includes(f)) : all;
+  const shown = f ? all.filter(t => normEq(String(t.text) + " " + (t.list || []).map(x => x.t).join(" ")).includes(f)) : all;
   if (!all.length) list.append(hint("Nicio sarcină. Dictează ceva și apasă „📝 Ca sarcină”."));
   else if (!shown.length) list.append(hint("Nimic găsit."));
   shown.forEach(t => list.append(taskItem(t)));
@@ -1176,7 +1243,8 @@ const taskDoneMs = h => h.doneAt || roDayMs(h.day) || h.id / 10;
 function taskHistItem(h) {
   const box = el("div", { class: "item" });
   box.append(
-    el("div", { class: "txt", text: "✔ " + h.text }),
+    el("div", { class: "txt", text: "✔ " + (Array.isArray(h.list) ? "📋 " : "") + h.text }),
+    Array.isArray(h.list) ? listView(h, "history", false) : "",
     el("small", { text: `creată ${h.day} ${h.time}` + (h.doneAt ? ` · terminată ${fmtDT(h.doneAt)}` : "") }, [folderTag(h) || ""]),
     el("div", { class: "row" }, [
       el("button", { text: "↩ Readu", onclick: () => restoreTask(h.id) }),
@@ -1269,13 +1337,13 @@ async function shareFile(name, text, title, mime) {
 const csvCell = v => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
 async function exportCSV() {
   let csv = "﻿Nr,Text,Prioritate,Termen,Data,Ora\n";
-  tasksSorted().forEach((t, i) => { csv += [i + 1, t.text, t.priority, t.due, t.day, t.time].map(csvCell).join(",") + "\n"; });
+  tasksSorted().forEach((t, i) => { csv += [i + 1, t.text + (Array.isArray(t.list) ? ": " + t.list.map(x => (x.d ? "✔ " : "") + x.t).join("; ") : ""), t.priority, t.due, t.day, t.time].map(csvCell).join(",") + "\n"; });
   await shareFile("sarcini.csv", csv, "Sarcini (CSV)", "text/csv");
 }
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function tasksHtml() {
   const rows = tasksSorted().map((t, i) =>
-    `<tr><td>${i + 1}</td><td>${esc(t.text)}</td><td>${esc(t.priority)}</td><td>${esc(t.due)}</td><td>${esc(t.day)}</td><td>${esc(t.time)}</td></tr>`).join("");
+    `<tr><td>${i + 1}</td><td>${esc(t.text)}${Array.isArray(t.list) ? "<br>" + t.list.map(x => (x.d ? "☑ " : "☐ ") + esc(x.t)).join("<br>") : ""}</td><td>${esc(t.priority)}</td><td>${esc(t.due)}</td><td>${esc(t.day)}</td><td>${esc(t.time)}</td></tr>`).join("");
   return `<!DOCTYPE html><html lang="ro"><head><meta charset="utf-8"><title>Sarcini</title>` +
     `<style>body{font-family:Arial;padding:16px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #999;padding:6px;text-align:left}</style>` +
     `</head><body><h2>Sarcini – ${esc(new Date().toLocaleDateString("ro-RO"))}</h2>` +
@@ -1826,6 +1894,121 @@ function noDate(text, p, type, msg) {
     } })
   ]);
 }
+// ====================================================================
+//  Comenzi vocale: subfolder nou și liste
+//   „fă un folder la sarcini cu numele Dosare, apoi fă o listă acolo cu următoarele elemente: a, b, c”
+//   „pune în liste următoarea listă cuprinzând: corp a; corp b, de mers la X, de mers la Y”
+//   „fă o listă de cumpărături în folderul Casa cu: pâine virgulă lapte virgulă ouă”
+//  Lucrăm pe textul fără diacritice (normEq păstrează pozițiile), dar tăiem din textul original.
+// ====================================================================
+const CMD_VERB = "(?:te rog\\s+)?(?:fa|faci|fa-mi|creeaza|creaza|adauga|pune|scrie|noteaza)";
+const FOLDER_CMD = new RegExp("^\\s*" + CMD_VERB + "\\s+(?:(?:un|o|si|mi|imi)\\s+)*(?:nou\\s+)?(?:sub)?folder(?:ul)?\\b\\s*(?:nou\\b)?", "");
+const LIST_CMD = new RegExp("^\\s*[,.;]?\\s*(?:si\\s+)?" + CMD_VERB + "\\s+(?:(?:o|un|in|la|si|mi|imi|noua)\\s+)*(?:lista|liste|listele|listei)\\b", "");
+const ITEMS_MARK = /(?:\b(?:cu\s+|avand\s+)?urmatoarele(?:\s+(?:elemente|lucruri|puncte|chestii))?\b|\b(?:cu\s+)?elementele\b|\bcuprinzand\b|\bcare\s+(?:cuprinde|contine)\b|\bce\s+cuprinde\b|\bcontinand\b|\bcu\s+elemente(?:le)?\b|:)\s*:?/;
+// despărțitori: semnele de punctuație sau cuvintele rostite „virgulă”, „punct și virgulă”, „următorul element”, „rând nou”
+const ITEM_SEP = /\s*(?:[,;\n]|\.(?!\d)|\bpunct\s+si\s+virgula\b|\bvirgula\b|\burmatorul\s+element\b|\blinie\s+noua\b|\brand\s+nou\b)\s*/g;
+const trimPunct = s => String(s || "").replace(/^[\s,.;:–-]+|[\s,.;:–-]+$/g, "");
+const capFirst = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+function splitItems(text) {
+  const n = normEq(text), out = [];
+  let last = 0, m; ITEM_SEP.lastIndex = 0;
+  while ((m = ITEM_SEP.exec(n))) { out.push(text.slice(last, m.index)); last = m.index + m[0].length; if (!m[0].length) ITEM_SEP.lastIndex++; }
+  out.push(text.slice(last));
+  return out.map(trimPunct).filter(Boolean).map(capFirst);
+}
+const KIND_RE = /\b(?:sub|la|in|pentru|de\s+la|din)\s+(sarcini|sarcina|sarcinile|memento|mementouri|memento-uri|alarme|alarmele|amintiri)\b/;
+const NAME_RE = /\b(?:cu\s+numele|numit|numita|denumit|denumita|cu\s+denumirea|cu\s+titlul|intitulata|intitulat)\b\s*/;
+function folderFind(name) { const k = kwNorm(name); return folderGet().find(f => kwNorm(f.name) === k) || null; }
+function folderEnsure(name, kind) {
+  const l = folderGet(); const k = kwNorm(name);
+  let f = l.find(x => kwNorm(x.name) === k);
+  if (f) { const kinds = f.kinds || ["tasks", "mem"]; if (!kinds.includes(kind)) { f.kinds = kinds.concat(kind); folderSet(l); } return { f, made: false }; }
+  f = { id: uid(), name: capFirst(trimPunct(name)), keys: "", kinds: [kind] };
+  l.push(f); folderSet(l);
+  return { f, made: true };
+}
+// partea de folder: „un folder la sarcini cu numele Dosare” → { name, kind }
+function parseFolderPart(text) {
+  const n = normEq(text); const m = FOLDER_CMD.exec(n); if (!m) return null;
+  let rest = text.slice(m[0].length), rn = normEq(rest);
+  let kind = "tasks";
+  const km = KIND_RE.exec(rn);
+  if (km) { if (!/^sarcin/.test(km[1])) kind = "mem"; rest = rest.slice(0, km.index) + " " + rest.slice(km.index + km[0].length); rn = normEq(rest); }
+  const nm = NAME_RE.exec(rn);
+  let name = nm ? rest.slice(nm.index + nm[0].length) : rest;
+  name = trimPunct(name.replace(/\s+/g, " "));
+  if (!name) return null;
+  return { name, kind };
+}
+// partea de listă: „pune în liste următoarea listă cuprinzând: a; b” → { title, folderName, here, items }
+function parseListPart(text) {
+  const n = normEq(text); const m = LIST_CMD.exec(n); if (!m) return null;
+  let rest = text.slice(m[0].length), rn = normEq(rest);
+  const im = ITEMS_MARK.exec(rn);
+  let head, body;
+  if (im) { head = rest.slice(0, im.index); body = rest.slice(im.index + im[0].length); }
+  else { head = ""; body = rest; }
+  const items = splitItems(body);
+  if (!items.length || (!im && items.length < 2)) return null; // „pune lista pe birou” rămâne sarcină
+  head = head.replace(/[\s,]+(?:cu|care|av[âa]nd|cuprinz[âa]nd)[\s,]*$/i, " "); // „… în folderul Casa cu: …”
+  let hn = normEq(head), folderName = null, here = false, title = "";
+  const fm = /\b(?:in|la)\s+(?:folderul|subfolderul|dosarul|categoria)\s+/.exec(hn);
+  if (fm) { // numele folderului: până la „cu numele / numită” sau până la final
+    const after = head.slice(fm.index + fm[0].length), an = normEq(after);
+    const stop = NAME_RE.exec(an);
+    folderName = trimPunct(stop ? after.slice(0, stop.index) : after);
+    head = head.slice(0, fm.index) + " " + (stop ? after.slice(stop.index) : ""); hn = normEq(head);
+  }
+  if (/\b(?:acolo|in\s+el|in\s+acesta|in\s+ea)\b/.test(hn)) { here = true; head = head.replace(/\b(?:acolo|[îi]n\s+el|[îi]n\s+acesta|[îi]n\s+ea)\b/gi, " "); hn = normEq(head); }
+  const nm = NAME_RE.exec(hn);
+  if (nm) title = head.slice(nm.index + nm[0].length);
+  else { // scoatem cuvintele de legătură de la început: „(în liste) următoarea listă …”
+    const skip = new Set(["in", "la", "liste", "lista", "urmatoarea", "noua", "nou", "o", "un", "si"]);
+    const w = head.trim().split(/\s+/).filter(Boolean);
+    while (w.length && skip.has(normEq(trimPunct(w[0])).toLowerCase())) w.shift();
+    title = w.join(" ");
+  }
+  title = trimPunct(title.replace(/\s+/g, " "));
+  if (title && !/^list/i.test(normEq(title))) title = /^(de|cu|pentru)\b/i.test(normEq(title)) ? "Listă " + title : capFirst(title);
+  return { title: title || "Listă " + new Date().toLocaleDateString("ro-RO", { day: "2-digit", month: "2-digit" }), folderName, here, items };
+}
+// întoarce true dacă textul a fost o comandă (și am făcut-o)
+function voiceCommand(text) {
+  const n = normEq(text);
+  let folderTxt = null, listTxt = text;
+  if (FOLDER_CMD.test(n)) {
+    // „…, apoi fă o listă …” / „… și fă o listă …” → separăm cele două comenzi
+    const sp = new RegExp("[,.;]?\\s*(?:\\b(?:si\\s+)?apoi\\b|\\bsi\\b)(?=\\s*(?:te rog\\s+)?(?:fa|faci|fa-mi|creeaza|creaza|adauga|pune|scrie|noteaza)\\s+(?:(?:o|un|in|la|si|mi|imi|noua)\\s+)*(?:lista|liste)\\b)").exec(n);
+    folderTxt = sp ? text.slice(0, sp.index) : text;
+    listTxt = sp ? text.slice(sp.index + sp[0].length) : null;
+  }
+  const fp = folderTxt != null ? parseFolderPart(folderTxt) : null;
+  const lp = listTxt != null ? parseListPart(listTxt) : null;
+  if (!fp && !lp) return false;
+  const msgs = []; let target = null;
+  if (fp) {
+    const r = folderEnsure(fp.name, fp.kind); target = r.f;
+    msgs.push(`📁 ${r.made ? "Am făcut subfolderul" : "Subfolderul există deja"} „${r.f.name}” (la ${fp.kind === "tasks" ? "Sarcini" : "Memento & alarme"}).`);
+  }
+  if (lp) {
+    if (lp.folderName) target = folderEnsure(lp.folderName, "tasks").f;
+    else if (!target) target = folderEnsure("Liste", "tasks").f;
+    const now = new Date();
+    const item = { id: uid(), text: lp.title, list: lp.items.map(t => ({ t, d: false })),
+      date: now.toLocaleString("ro-RO"), day: now.toLocaleDateString("ro-RO"), time: now.toLocaleTimeString("ro-RO"),
+      done: false, priority: "", due: "", action: "created", cat: target ? target.id : null };
+    const l = tasksGet(); l.unshift(item); tasksSet(l);
+    msgs.push(`📋 Am făcut lista „${lp.title}” cu ${lp.items.length} elemente` + (target ? ` în 📁 ${target.name}.` : "."));
+    if (target) fSel.tasks = target.id; // arătăm direct folderul în care a intrat
+  }
+  clearBox();
+  confirmFx(false);
+  flash("✅ " + msgs.join(" "), "okbox");
+  speak(msgs.join(" ").replace(/[📁📋„”]/gu, ""));
+  openView(lp ? "tasks" : curView === "settings" ? "settings" : lastTab); renderBadges();
+  return true;
+}
+
 // mode: "auto" | "task" | "popup" | "alarm"
 function saveText(mode, raw) {
   let text = (raw != null ? raw : byId("textBox").value).trim();
@@ -1834,6 +2017,7 @@ function saveText(mode, raw) {
   byId("textBox").value = text;
   learnFromEdit(text);
   text = fixText(text);
+  if ((mode === "auto" || mode === "task") && voiceCommand(text)) return; // folder nou / listă
   if (mode === "task") { saveAsTask(text); return; }
   const parts = parseMulti(text);
   if (mode === "auto") {
@@ -1901,8 +2085,16 @@ async function nativeBegin(sess) {
   }
 }
 // paznic: dacă în 7 secunde nu vine niciun semnal de la recunoaștere, repornim microfonul
+let nStartAt = 0, nLastHeard = 0;
+const mmss = ms => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${pad2(s % 60)}`; };
 function nWatchdog() {
   if (!nListening) return;
+  // limitele alese în ⚙️ Setări → Dictare: durata maximă și oprirea după liniște (textul rămâne în căsuță)
+  const now = Date.now(), maxM = dictMaxMin(), silS = dictSilSec();
+  if (maxM && now - nStartAt > maxM * 60000) { stopNative(false); setStatus(`⏹️ Oprit: s-a atins durata maximă (${maxM} min). Verifică textul și salvează.`); return; }
+  if (silS && now - (nLastHeard || nStartAt) > silS * 1000) { stopNative(false); setStatus(`⏹️ Oprit după ${silS} s de liniște. Verifică textul și salvează.`); return; }
+  const st = byId("status").textContent;
+  if (/^🎙️/.test(st)) setStatus("🎙️ Ascult… " + mmss(now - nStartAt) + (maxM ? ` / ${maxM}:00` : ""));
   if (Date.now() - nLastEvt < 7000) return;
   nKicks++;
   if (nKicks > 6 && !nHeard) {
@@ -1934,7 +2126,7 @@ async function startNative() {
     nListenersSet = true;
     SRp.addListener("partialResults", d => {
       if (!nListening || !d || !d.matches || !d.matches[0]) return;
-      nFails = 0; nKicks = 0; nHeard = true; nLastEvt = Date.now();
+      nFails = 0; nKicks = 0; nHeard = true; nLastEvt = Date.now(); nLastHeard = nLastEvt;
       const m = pickBest(d.matches, nKeys);
       // rezultatul final al frazei precedente, sosit după ce am salvat-o: îl înlocuim (e mai corect), nu-l dublăm
       if (nAfterCommit && nSegs.length && Date.now() - nCommitAt < 1500) nSegs[nSegs.length - 1] = m.trim();
@@ -1960,7 +2152,7 @@ async function startNative() {
   clearTimeout(nRestartT);
   byId("textBox").value = ""; nSegs = []; nPartial = ""; nFails = 0; nKicks = 0; nHeard = false; nAfterCommit = false; nDictated = ""; nKeys = buildKeys();
   byId("dictSuggest").replaceChildren();
-  nListening = true;
+  nListening = true; nStartAt = Date.now(); nLastHeard = 0;
   setRecUi(true);
   setStatus("⏳ Pornesc microfonul… așteaptă");
   clearInterval(nWatch); nWatch = setInterval(nWatchdog, 1000);
@@ -2144,6 +2336,22 @@ function dictAdd() {
 // ====================================================================
 //  Setări
 // ====================================================================
+// secțiunile se deschid una câte una (deschizi una → celelalte se închid)
+document.querySelectorAll("details.sgrp").forEach(d => d.addEventListener("toggle", () => {
+  if (!d.open) return;
+  document.querySelectorAll("details.sgrp[open]").forEach(o => { if (o !== d) o.open = false; });
+  setTimeout(() => d.scrollIntoView({ block: "start", behavior: "smooth" }), 50);
+}));
+// dictare: durata maximă (minute, 0 = fără limită) și oprirea după liniște (secunde, 0 = niciodată)
+function dictMaxMin() { const v = localStorage.getItem("dictMax"); return v != null && [0, 1, 3, 5, 10, 20].includes(+v) ? +v : 10; }
+function dictSilSec() { const v = localStorage.getItem("dictSil"); return v != null && [0, 15, 30, 60].includes(+v) ? +v : 0; }
+function dictOptChanged() {
+  localStorage.setItem("dictMax", byId("dictMax").value);
+  localStorage.setItem("dictSil", byId("dictSil").value);
+  const m = dictMaxMin(), s = dictSilSec();
+  byId("dictInfo").textContent = "✅ Salvat: " + (m ? `o dictare durează cel mult ${m} min` : "dictare fără limită") +
+    (s ? `, se oprește după ${s} s de liniște.` : ", se oprește doar cu Stop sau „gata”.");
+}
 function renderSettings() {
   renderFolders();
   byId("setInfo").textContent = isNative
@@ -2167,9 +2375,10 @@ function renderSettings() {
   byId("autoBkInfo").textContent = !isNative ? "" : lm ? "Ultima copie automată: " + new Date(lm).toLocaleString("ro-RO") : "Copia automată se face la prima modificare.";
   byId("verInfo").textContent = "Secretara " + APP_VER + (isBuilt(BUILD_NO) ? " · build " + BUILD_NO : "");
   byId("alarmsHere").value = alarmsHere();
+  byId("dictMax").value = String(dictMaxMin()); byId("dictSil").value = String(dictSilSec());
   syncRender(); syncEnsure();
 }
-const APP_VER = "v3.9 · 20.11.2026";
+const APP_VER = "v4.0 · 20.11.2026";
 async function sndChanged() {
   lsSetRaw("sndAlarm", byId("sndAlarm").value);
   lsSetRaw("sndLen", byId("sndLen").value);
