@@ -2169,7 +2169,7 @@ function renderSettings() {
   byId("alarmsHere").value = alarmsHere();
   syncRender(); syncEnsure();
 }
-const APP_VER = "v3.8 · 20.11.2026";
+const APP_VER = "v3.9 · 20.11.2026";
 async function sndChanged() {
   lsSetRaw("sndAlarm", byId("sndAlarm").value);
   lsSetRaw("sndLen", byId("sndLen").value);
@@ -2786,7 +2786,7 @@ async function updCheck(manual) {
     }
     let b = null; // pachetul se descarcă o singură dată
     try { const l = await U.list(); b = (l.bundles || []).find(x => x.version === String(nv) && x.status !== "error") || null; } catch (e) {}
-    if (!b) { if (manual) updMsg(`⏳ Descarc build ${nv}…`); b = await U.download({ url: v.url, version: String(nv) }); }
+    if (!b) { if (manual) updMsg(`⏳ Descarc build ${nv}…`); b = await U.download({ url: v.url, version: String(nv), checksum: v.checksum || "" }); }
     await U.next({ id: b.id });
     flash(`⬇️ Am descărcat versiunea nouă (build ${nv}). Se aplică singură după ce închizi și redeschizi aplicația, sau acum:`, "okbox",
       [el("button", { class: "doneBtn", text: "🔄 Aplică acum", onclick: async () => { try { await U.set({ id: b.id }); } catch (e) { updMsg("⚠️ " + errMsg(e)); } } })]);
