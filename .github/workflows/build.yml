@@ -29,6 +29,12 @@ jobs:
       - run: |
           mkdir -p www
           cp index.html www/index.html
+          # bibliotecile Firebase (sincronizare); fara ele aplicatia merge, dar nu sincronizeaza
+          # merg si urcate direct in repo (langa index.html), si intr-un folder firebase
+          mkdir -p www/firebase
+          for f in firebase-app-compat.js firebase-auth-compat.js firebase-firestore-compat.js; do
+            if [ -f "$f" ]; then cp "$f" www/firebase/; elif [ -f "firebase/$f" ]; then cp "firebase/$f" www/firebase/; else echo "::warning::Lipseste $f - aplicatia nu va putea sincroniza. Urca-l in repo langa index.html."; fi
+          done
       - run: npx cap add android
       - name: Build cu widget, scurtatura si romana offline
         id: full
