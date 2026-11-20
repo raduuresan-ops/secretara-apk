@@ -81,6 +81,18 @@ details summary{cursor:pointer;color:var(--muted);margin-top:14px}
 #remAlert{position:fixed;inset:0;display:none;background:rgba(0,0,0,.88);z-index:99;padding:20px;overflow:auto}
 .remCard{background:#252b3b;border:2px solid var(--accent);border-radius:16px;padding:20px;margin:30px auto 14px;max-width:520px;text-align:center}
 .remCard .big{font-size:22px;margin:10px 0;word-break:break-word}
+/* varianta PC (browser): doar text, fără microfon și fără sunete */
+body.pc .nativeOnly,body.pc #btnRecord{display:none}
+body:not(.pc) .pcOnly{display:none}
+body.pc .app{max-width:900px}
+#toasts{position:fixed;top:12px;right:12px;width:340px;max-width:calc(100vw - 24px);z-index:100;display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - 24px);overflow-y:auto}
+.toast{background:#252b3b;border-left:5px solid var(--accent);border-radius:10px;padding:12px 12px 8px;box-shadow:0 6px 24px rgba(0,0,0,.5);animation:tin .25s ease-out}
+.toast.alarm{border-left-color:var(--bad)}
+.toast .tt{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--muted)}
+.toast .tt button{background:none;margin:0;padding:2px 6px;font-size:15px;color:var(--muted)}
+.toast .big{font-size:16px;margin:6px 0;word-break:break-word}
+.toast .row button{font-size:12px;padding:7px 9px}
+@keyframes tin{from{transform:translateX(40px);opacity:0}}
 </style>
 </head>
 <body>
@@ -102,6 +114,7 @@ details summary{cursor:pointer;color:var(--muted);margin-top:14px}
     </div>
     <div id="dbg" class="calHint"></div>
     <textarea id="textBox" placeholder="Dictează sau scrie aici… La final spune „gata”."></textarea>
+    <p class="calHint pcOnly" style="margin:4px 0 0;">Scrie, de exemplu: „mâine la ora 12:00 alarmă plată factură” sau „vineri la 9 memento ședință”, apoi apasă <b>Ctrl+Enter</b> sau „Salvează”.</p>
     <div id="dictSuggest"></div>
     <button id="btnAuto" class="primary wide">🪄 Salvează (automat)</button>
     <div class="saveRow">
@@ -206,9 +219,17 @@ details summary{cursor:pointer;color:var(--muted);margin-top:14px}
     <h2>⚙️ Setări</h2>
     <button onclick="backToTab()">⬅️ Înapoi</button>
     <p id="setInfo" class="calHint"></p>
-    <button onclick="settingsCheck()">🔐 Verifică / cere permisiuni</button>
-    <button onclick="testAlarm()">⏰ Test alarmă (peste 15 secunde)</button>
-    <button id="btnSnap" onclick="toggleSnap()"></button>
+    <button class="nativeOnly" onclick="settingsCheck()">🔐 Verifică / cere permisiuni</button>
+    <button class="nativeOnly" onclick="testAlarm()">⏰ Test alarmă (peste 15 secunde)</button>
+    <button id="btnSnap" class="nativeOnly" onclick="toggleSnap()"></button>
+
+    <div class="item pcOnly" style="margin-top:14px;">
+      <b>💻 Pop-up-uri pe calculator</b>
+      <p class="calHint">Memento-urile și alarmele apar fără sunet, ca mesaje în dreapta ecranului: în pagină și, dacă le permiți, ca notificări Windows (în colțul din dreapta jos). Apar doar cât timp Secretara e deschisă (o filă în browser sau aplicația instalată).</p>
+      <button class="doneBtn" onclick="pcNotifAsk()">🔔 Permite notificările Windows</button>
+      <button onclick="testAlarm()">🧪 Test pop-up (peste 10 secunde)</button>
+      <p id="pcNotifInfo" class="calHint"></p>
+    </div>
 
     <div class="item" style="margin-top:14px;">
       <b>📁 Subfoldere</b>
@@ -219,7 +240,7 @@ details summary{cursor:pointer;color:var(--muted);margin-top:14px}
       <p id="folderInfo" class="calHint"></p>
     </div>
 
-    <div class="item" style="margin-top:14px;">
+    <div class="item nativeOnly" style="margin-top:14px;">
       <b>🔊 Sunete și confirmare</b>
       <label class="lbl" for="sndAlarm">Sunet alarmă</label>
       <select id="sndAlarm" onchange="sndChanged()"></select>
@@ -260,7 +281,7 @@ details summary{cursor:pointer;color:var(--muted);margin-top:14px}
       <p id="sndInfo" class="calHint"></p>
     </div>
 
-    <div class="item" style="margin-top:14px;">
+    <div class="item nativeOnly" style="margin-top:14px;">
       <b>🌐 Româna offline (dictare fără internet)</b>
       <p class="calHint">Descarcă pachetul de limbă română pentru recunoașterea vocală direct pe telefon. Cu el, dictarea merge și fără internet. Necesită Android 13 sau mai nou. Dacă descărcarea directă nu merge, folosește „Setări voce Google” → Recunoaștere vocală offline → Română.</p>
       <button onclick="offlineCheck()">🔍 Verifică</button>
@@ -283,7 +304,7 @@ details summary{cursor:pointer;color:var(--muted);margin-top:14px}
         <button onclick="syncLogout()">🚪 Deconectează</button>
       </div>
       <p id="syncInfo" class="calHint"></p>
-      <label class="lbl" for="alarmsHere">Pe acest telefon sună</label>
+      <label class="lbl" for="alarmsHere">Pe acest dispozitiv apar / sună</label>
       <select id="alarmsHere" onchange="alarmsHereChanged()">
         <option value="all">⏰ Alarmele și 🔔 memento-urile</option>
         <option value="memo">🔔 Doar memento-urile (fără alarme)</option>
@@ -293,21 +314,29 @@ details summary{cursor:pointer;color:var(--muted);margin-top:14px}
     </div>
 
     <div class="item" style="margin-top:14px;">
+      <b>🔄 Actualizări</b>
+      <p class="calHint nativeOnly">Aplicația caută singură versiuni noi la pornire. Cele mai multe se descarcă singure (fără APK) și se aplică după ce închizi și redeschizi aplicația. Doar când se schimbă partea de Android îți cere să instalezi un APK nou, cu un singur buton. Datele rămân în ambele cazuri.</p>
+      <p class="calHint pcOnly">Pe calculator ai mereu ultima versiune: dacă apare una nouă cât timp pagina e deschisă, îți spune să reîncarci pagina.</p>
+      <button onclick="updCheck(true)">🔍 Caută update acum</button>
+      <p id="updInfo" class="calHint"></p>
+    </div>
+
+    <div class="item" style="margin-top:14px;">
       <b>💾 Backup</b>
       <p class="calHint">Creează un fișier cu toate datele (sarcini, memento-uri, istoric, dicționar, setări) și îl trimiți în Drive, e-mail sau WhatsApp. Îl poți restaura după reinstalare.</p>
-      <p class="calHint">🛟 În plus, aplicația salvează automat o copie la fiecare modificare (în memoria aplicației și în <b>Documents/Secretara/secretara-autobackup.json</b>). Dacă după un update datele lipsesc, sunt restaurate automat la pornire.</p>
+      <p class="calHint nativeOnly">🛟 În plus, aplicația salvează automat o copie la fiecare modificare (în memoria aplicației și în <b>Documents/Secretara/secretara-autobackup.json</b>). Dacă după un update datele lipsesc, sunt restaurate automat la pornire.</p>
       <p id="autoBkInfo" class="calHint"></p>
       <button class="doneBtn" onclick="doBackup()">📤 Backup (trimite fișier)</button>
       <button onclick="byId('fileImport').click()">📥 Restaurează din fișier</button>
       <input type="file" id="fileImport" accept=".json,application/json" style="display:none" onchange="importFile(event)" />
     </div>
 
-    <div class="item" style="margin-top:14px;">
+    <div class="item nativeOnly" style="margin-top:14px;">
       <b>🎤 Widget și scurtătură</b>
       <p class="calHint">Widget: apasă lung pe ecranul principal → Widgeturi → Secretara, apoi trage butonul „Dictează”. Scurtătură: apasă lung pe iconița aplicației → „Dictează”. Ambele deschid aplicația și pornesc microfonul.</p>
     </div>
 
-    <div class="item" style="margin-top:14px;">
+    <div class="item nativeOnly" style="margin-top:14px;">
       <b>📱 Ca alarmele să sune sigur (Samsung)</b>
       <ol class="calHint" style="padding-left:18px;">
         <li>Setări → Aplicații → Secretara → Baterie → <b>Nerestricționat</b><br><span class="en">Settings → Apps → Secretara → Battery → Unrestricted</span></li>
@@ -762,6 +791,8 @@ function diffPairs(a, b) {
 const CAP = window.Capacitor;
 const isNative = !!(CAP && ((CAP.isNativePlatform && CAP.isNativePlatform()) || (CAP.getPlatform && CAP.getPlatform() !== "web")));
 const P = n => { try { return (CAP && CAP.Plugins && CAP.Plugins[n]) || (CAP && CAP.registerPlugin && CAP.registerPlugin(n)) || null; } catch (e) { return null; } };
+// update automat: confirmăm imediat că versiunea a pornit bine (altfel pluginul revine singur la versiunea anterioară)
+try { if (isNative && CAP.isPluginAvailable && CAP.isPluginAvailable("CapacitorUpdater")) P("CapacitorUpdater").notifyAppReady().catch(() => {}); } catch (e) {}
 
 const byId = id => document.getElementById(id);
 const pad2 = n => String(n).padStart(2, "0");
@@ -1625,6 +1656,7 @@ function pickBest(ms, keys) {
 
 // confirmare: "both" (sunet + voce), "sound", "voice", "none"; compatibil cu vechea setare „tts”
 function confMode() {
+  if (!isNative) return "none"; // pe PC: fără sunete
   const v = localStorage.getItem("confMode");
   if (["both", "sound", "voice", "none"].includes(v)) return v;
   return localStorage.getItem("tts") === "0" ? "sound" : "both";
@@ -2098,7 +2130,8 @@ function renderSettings() {
   renderFolders();
   byId("setInfo").textContent = isNative
     ? "Rulezi ca aplicație Android: alarmele sunt programate în telefon și sună și cu aplicația închisă."
-    : "Rulezi în browser: alarmele sună doar cât timp pagina e deschisă. Pentru alarme sigure instalează aplicația (APK).";
+    : "💻 Varianta de calculator: memento-urile și alarmele apar fără sunet, ca mesaje în dreapta ecranului, cât timp Secretara e deschisă.";
+  pcNotifRender();
   byId("btnSnap").textContent = snapOn() ? "🎯 Corectare aproximativă termeni: PORNITĂ" : "🎯 Corectare aproximativă termeni: OPRITĂ";
   const fill = (id, list, val) => {
     const s = byId(id);
@@ -2114,11 +2147,11 @@ function renderSettings() {
   const dt = defTimeHM(); byId("defTime").value = `${pad2(dt.h)}:${pad2(dt.m)}`;
   const lm = +localStorage.getItem("lastMirror") || 0;
   byId("autoBkInfo").textContent = !isNative ? "" : lm ? "Ultima copie automată: " + new Date(lm).toLocaleString("ro-RO") : "Copia automată se face la prima modificare.";
-  byId("verInfo").textContent = "Secretara " + APP_VER;
+  byId("verInfo").textContent = "Secretara " + APP_VER + (isBuilt(BUILD_NO) ? " · build " + BUILD_NO : "");
   byId("alarmsHere").value = alarmsHere();
   syncRender(); syncEnsure();
 }
-const APP_VER = "v3.5 · 20.11.2026";
+const APP_VER = "v3.7 · 20.11.2026";
 async function sndChanged() {
   lsSetRaw("sndAlarm", byId("sndAlarm").value);
   lsSetRaw("sndLen", byId("sndLen").value);
@@ -2218,8 +2251,9 @@ async function settingsCheck() {
   byId("setInfo").textContent = out.join(" · ");
 }
 async function testAlarm() {
-  await createReminder("Test alarmă", Date.now() + 15000, "alarm", null, null, { test: true }); // test: nu se sincronizează
-  byId("setInfo").textContent = "Alarmă de test programată. Blochează ecranul și așteaptă 15 secunde.";
+  await createReminder("Test alarmă", Date.now() + (isNative ? 15000 : 10000), "alarm", null, null, { test: true }); // test: nu se sincronizează
+  const msg = isNative ? "Alarmă de test programată. Blochează ecranul și așteaptă 15 secunde." : "Pop-up de test programat: apare în dreapta peste 10 secunde.";
+  byId("setInfo").textContent = msg; const pi = byId("pcNotifInfo"); if (pi && !isNative) pi.textContent = msg;
 }
 
 // ---------- Româna offline (plugin propriu OfflineSpeech, Android 13+) ----------
@@ -2305,7 +2339,46 @@ function remRingOnce() {
   if (navigator.vibrate) navigator.vibrate([300, 150, 300, 150, 300]);
 }
 function remStopRing() { clearInterval(remRingTimer); remRingTimer = null; if (navigator.vibrate) navigator.vibrate(0); }
+// ---------- PC: pop-up silențios în dreapta + notificare Windows (fără sunet) ----------
+function showToast(r, late) {
+  let box = byId("toasts");
+  if (!box) { box = el("div", { id: "toasts" }); document.body.append(box); }
+  const isAl = r.type === "alarm";
+  const card = el("div", { class: "toast" + (isAl ? " alarm" : "") });
+  let sys = null;
+  const close = fn => { if (fn) fn(); card.remove(); if (sys) { try { sys.close(); } catch (e) {} } refresh(); };
+  card.append(
+    el("div", { class: "tt" }, [el("span", { text: (isAl ? "⏰ Alarmă" : "🔔 Memento") + " · " + fmtDT(r.due) + (late ? " · (ratat)" : "") }),
+      el("button", { text: "✖", title: "Închide (rămâne în listă)", onclick: () => close() })]),
+    el("div", { class: "big", text: r.text }),
+    el("div", { class: "row" }, [
+      el("button", { class: "doneBtn", text: "✔ Gata", onclick: () => close(() => remDone(r.id)) }),
+      el("button", { text: "Amână 5 min", onclick: () => close(() => remSnooze(r.id, 5)) }),
+      el("button", { text: "Amână 1 oră", onclick: () => close(() => remSnooze(r.id, 60)) })
+    ]));
+  box.prepend(card);
+  if ("Notification" in window && Notification.permission === "granted") {
+    try {
+      sys = new Notification((isAl ? "⏰ Alarmă" : "🔔 Memento") + " – Secretara", {
+        body: r.text, silent: true, tag: "rem-" + r.id + "-" + r.due, requireInteraction: isAl });
+      sys.onclick = () => { window.focus(); try { sys.close(); } catch (e) {} };
+    } catch (e) {}
+  }
+}
+function pcNotifRender() {
+  const i = byId("pcNotifInfo"); if (!i || isNative) return;
+  if (!("Notification" in window)) { i.textContent = "Browserul nu are notificări; mesajele apar doar în pagină."; return; }
+  i.textContent = { granted: "✅ Notificările Windows sunt permise.",
+    denied: "🚫 Notificările sunt blocate. Apasă pe lacătul din stânga adresei → Notificări → Permite, apoi reîncarcă pagina.",
+    default: "Notificările Windows nu sunt încă permise; mesajele apar doar în pagină." }[Notification.permission] || "";
+}
+async function pcNotifAsk() {
+  if (!("Notification" in window)) { pcNotifRender(); return; }
+  try { await Notification.requestPermission(); } catch (e) {}
+  pcNotifRender();
+}
 function showRemAlert(r, late) {
+  if (!isNative) { showToast(r, late); return; }
   let box = byId("remAlert");
   if (!box) { box = el("div", { id: "remAlert" }); document.body.append(box); }
   box.style.display = "block";
@@ -2533,6 +2606,7 @@ function syncStart(user) {
   SY.col = SY.db.collection("users").doc(user.uid).collection("items");
   syncMsg(SY.fresh ? "⏳ Prima sincronizare: aduc datele de pe server…" : "⏳ Sincronizez…");
   syncRender();
+  if (!isNative && /Ca să vezi aceleași date/.test(byId("lastMem").textContent)) byId("lastMem").replaceChildren();
   syncListen();
 }
 function syncStop() {
@@ -2567,7 +2641,11 @@ async function syncEnsure() {
     if (!firebase.apps.length) firebase.initializeApp(FB_CONFIG);
     SY.auth = firebase.auth(); SY.db = firebase.firestore();
     SY.ok = true;
-    SY.auth.onAuthStateChanged(u => { if (u) syncStart(u); else { syncStop(); if (!SY.msg) syncMsg("Neconectat. Scrie emailul și parola contului Secretara."); } });
+    SY.auth.onAuthStateChanged(u => { if (u) syncStart(u); else {
+      syncStop(); if (!SY.msg) syncMsg("Neconectat. Scrie emailul și parola contului Secretara.");
+      if (!isNative) flash("☁️ Ca să vezi aceleași date ca pe telefon, conectează-te: ⚙️ Setări → Sincronizare (același email și aceeași parolă).", "warnbox",
+        [el("button", { class: "doneBtn", text: "⚙️ Deschide Setări", onclick: () => { openView("settings"); byId("syncEmail").scrollIntoView({ block: "center" }); byId("syncEmail").focus(); } })]);
+    } });
   } catch (e) {
     syncMsg("⚠️ Sincronizarea nu e disponibilă: " + errMsg(e));
   }
@@ -2617,6 +2695,61 @@ async function syncLogout() {
 function syncBoot() { if (localStorage.getItem("sync_uid")) syncEnsure(); }
 
 // ====================================================================
+//  Actualizări automate
+//  La fiecare build, GitHub publică pe Pages: update/version.json + update/bundle.zip (index.html + firebase)
+//  Telefon: dacă partea de Android e aceeași (amprenta NATIVE) → descarcă pachetul și îl aplică la repornire (pluginul Capgo)
+//           dacă diferă → oferă APK-ul nou din GitHub Releases
+//  PC: anunță că există o versiune nouă → reîncarcă pagina
+//  Valorile __...__ sunt completate de build.yml
+// ====================================================================
+const BUILD_NO = "__BUILD__", NATIVE_HASH = "__NATIVE__", PAGES_URL = "__PAGES__";
+function isBuilt(s) { return !/^__/.test(s); }
+const myBuild = () => (isBuilt(BUILD_NO) ? +BUILD_NO : 0);
+const updPlugin = () => (isNative && CAP.isPluginAvailable && CAP.isPluginAvailable("CapacitorUpdater") ? P("CapacitorUpdater") : null);
+let updLast = 0, updBusy = false;
+function updMsg(t) { const e = byId("updInfo"); if (e) e.textContent = t; }
+// amprenta părții Android instalate (din versionName „45.ab12cd34”, pus de build.yml)
+async function updNative() {
+  const U = updPlugin(); if (!U) return NATIVE_HASH;
+  try { const c = await U.current(); const p = String(c.native || "").split("."); if (p.length > 1 && p[1]) return p[1]; } catch (e) {}
+  return NATIVE_HASH;
+}
+async function updCheck(manual) {
+  if (!isBuilt(PAGES_URL)) { if (manual) updMsg("Versiune de test: actualizările merg doar în versiunea construită pe GitHub."); return; }
+  if (updBusy) return;
+  if (!manual && Date.now() - updLast < 30 * 60000) return;
+  updBusy = true; updLast = Date.now();
+  try {
+    if (manual) updMsg("⏳ Caut…");
+    const r = await fetch(PAGES_URL + "update/version.json?t=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) throw new Error("serverul a răspuns " + r.status);
+    const v = await r.json(), nv = +v.version || 0;
+    if (nv <= myBuild()) { if (manual) updMsg(`✅ Ai ultima versiune (build ${myBuild()}).`); return; }
+    if (!isNative) {
+      flash(`🔄 Există o versiune nouă a Secretarei (build ${nv}).`, "okbox", [el("button", { class: "doneBtn", text: "🔄 Reîncarcă pagina", onclick: () => location.reload() })]);
+      updMsg(`Versiune nouă: build ${nv}. Reîncarcă pagina.`);
+      return;
+    }
+    const U = updPlugin(), native = await updNative();
+    if (!U || v.native !== native) { // s-a schimbat partea de Android: e nevoie de APK
+      flash(`📲 Versiune nouă a aplicației (build ${nv}). De data asta trebuie instalat APK-ul: apasă butonul, apoi deschide fișierul descărcat → Install. Datele rămân.`, "warnbox",
+        [el("button", { class: "doneBtn", text: "📲 Descarcă APK-ul nou", onclick: () => { location.href = v.apk; } })]);
+      updMsg(`Versiune nouă: build ${nv} (cu APK).`);
+      return;
+    }
+    let b = null; // pachetul se descarcă o singură dată
+    try { const l = await U.list(); b = (l.bundles || []).find(x => x.version === String(nv) && x.status !== "error") || null; } catch (e) {}
+    if (!b) { if (manual) updMsg(`⏳ Descarc build ${nv}…`); b = await U.download({ url: v.url, version: String(nv) }); }
+    await U.next({ id: b.id });
+    flash(`⬇️ Am descărcat versiunea nouă (build ${nv}). Se aplică singură după ce închizi și redeschizi aplicația, sau acum:`, "okbox",
+      [el("button", { class: "doneBtn", text: "🔄 Aplică acum", onclick: async () => { try { await U.set({ id: b.id }); } catch (e) { updMsg("⚠️ " + errMsg(e)); } } })]);
+    updMsg(`Versiune nouă descărcată: build ${nv}.`);
+  } catch (e) {
+    if (manual) updMsg("⚠️ Nu am putut verifica: " + errMsg(e));
+  } finally { updBusy = false; }
+}
+
+// ====================================================================
 //  Backup și restaurare
 // ====================================================================
 function backupJson() { return JSON.stringify(backupObj(), null, 1); }
@@ -2661,6 +2794,14 @@ function startFromLink() { window.scrollTo(0, 0); if (isNative && !nListening) s
 //  Pornire
 // ====================================================================
 if (isNative) document.body.classList.add("native");
+else {
+  document.body.classList.add("pc");
+  const tb = byId("textBox");
+  tb.placeholder = "Scrie aici… ex.: mâine la ora 12:00 alarmă plată factură";
+  tb.addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveText("auto"); } });
+  setStatus("");
+  syncBoot = () => syncEnsure(); // pe PC încărcăm mereu sincronizarea (ca să apară formularul de conectare)
+}
 migrateReminders();
 archiveExpired();
 openView(lastTab);
@@ -2671,7 +2812,9 @@ syncNative();
 remTick();
 setInterval(remTick, 1000);
 syncBoot();
-document.addEventListener("visibilitychange", () => { if (!document.hidden) { remTick(); syncNative(); syncTouched(); } });
+setTimeout(() => updCheck(false), 5000);
+setInterval(() => updCheck(false), 31 * 60000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { remTick(); syncNative(); syncTouched(); updCheck(false); } });
 if (isNative) {
   const lb = +localStorage.getItem("lastBackup") || 0;
   if ((remGet().length || tasksGet().length) && Date.now() - lb > 7 * 86400000)
