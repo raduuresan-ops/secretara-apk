@@ -270,6 +270,29 @@ details summary{cursor:pointer;color:var(--muted);margin-top:14px}
     </div>
 
     <div class="item" style="margin-top:14px;">
+      <b>☁️ Sincronizare între telefoane</b>
+      <p class="calHint">Sarcinile, memento-urile, istoricul, dicționarul și subfolderele se sincronizează automat pe toate telefoanele conectate cu același cont. Merge și fără internet: modificările se trimit când revine conexiunea. Setările (sunete, voce, ora implicită) rămân separate pe fiecare telefon.</p>
+      <div id="syncOut">
+        <input id="syncEmail" type="email" placeholder="Email" autocomplete="username" />
+        <input id="syncPass" type="password" placeholder="Parola" autocomplete="current-password" />
+        <button class="doneBtn" onclick="syncLogin()">🔑 Conectează</button>
+        <button onclick="syncForgot()">❓ Am uitat parola</button>
+      </div>
+      <div id="syncIn" hidden>
+        <button class="doneBtn" onclick="syncNow()">🔄 Sincronizează acum</button>
+        <button onclick="syncLogout()">🚪 Deconectează</button>
+      </div>
+      <p id="syncInfo" class="calHint"></p>
+      <label class="lbl" for="alarmsHere">Pe acest telefon sună</label>
+      <select id="alarmsHere" onchange="alarmsHereChanged()">
+        <option value="all">⏰ Alarmele și 🔔 memento-urile</option>
+        <option value="memo">🔔 Doar memento-urile (fără alarme)</option>
+        <option value="none">🔕 Nimic (le văd doar în listă)</option>
+      </select>
+      <p id="alarmsInfo" class="calHint"></p>
+    </div>
+
+    <div class="item" style="margin-top:14px;">
       <b>💾 Backup</b>
       <p class="calHint">Creează un fișier cu toate datele (sarcini, memento-uri, istoric, dicționar, setări) și îl trimiți în Drive, e-mail sau WhatsApp. Îl poți restaura după reinstalare.</p>
       <p class="calHint">🛟 În plus, aplicația salvează automat o copie la fiecare modificare (în memoria aplicației și în <b>Documents/Secretara/secretara-autobackup.json</b>). Dacă după un update datele lipsesc, sunt restaurate automat la pornire.</p>
@@ -368,6 +391,7 @@ details summary{cursor:pointer;color:var(--muted);margin-top:14px}
       <li><b>Test alarmă</b>: sună după 15 secunde; blochează ecranul ca să verifici.</li>
       <li><b>Româna offline</b>: dictare și fără internet (Android 13+).</li>
       <li><b>Backup</b>: fă-l săptămânal; aplicația îți amintește după 7 zile. Pe lângă el există și o copie automată, restaurată singură dacă datele dispar după un update.</li>
+      <li><b>☁️ Sincronizare</b>: conectează-te pe fiecare telefon cu același email și aceeași parolă; tot ce adaugi sau bifezi apare și pe celelalte. Alegi pe care telefon sună alarmele („Pe acest telefon sună”).</li>
       <li>Pașii pentru Samsung (în română și engleză) sunt în ⚙️ Setări.</li>
     </ul>
   </section>
@@ -767,7 +791,7 @@ function flash(text, cls, kids) {
 // ---------- stocare ----------
 const arr = v => (Array.isArray(v) ? v : []);
 function lsGet(k, def) { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? def : v; } catch (e) { return def; } }
-function lsSet(k, v) { localStorage.setItem(k, JSON.stringify(v)); scheduleMirror(); }
+function lsSet(k, v) { localStorage.setItem(k, JSON.stringify(v)); scheduleMirror(); syncTouched(); }
 function lsSetRaw(k, v) { localStorage.setItem(k, v); scheduleMirror(); }
 const tasksGet = () => arr(lsGet("tasks", [])), tasksSet = l => lsSet("tasks", l);
 const histGet = () => arr(lsGet("history", [])), histSet = l => lsSet("history", l);
@@ -1265,6 +1289,7 @@ async function scheduleNative(r, atOverride, nidOverride) {
   const rep = !atOverride && r.repeat;
   const when = atOverride || r.due;
   if (!isNative || r.done || (!rep && when <= Date.now() + 1500)) return;
+  if (!notifOk(r)) return; // pe acest telefon nu sună (Setări → Sincronizare → „Pe acest telefon sună”)
   await ensureNative();
   const LN = P("LocalNotifications"); if (!LN) return;
   try {
@@ -1336,9 +1361,11 @@ async function createReminder(text, due, type, repeat, cat, extra) {
   return r;
 }
 // ---------- istoricul memento-urilor / alarmelor (separat de lista activă) ----------
-function remToHist(r, status, due) {
+// hid: id fix pentru intrările făcute automat (aceeași pe toate telefoanele, ca să nu apară dublate după sincronizare)
+function remToHist(r, status, due, hid) {
   const h = remHistGet();
-  h.unshift({ id: uid(), rid: r.id, text: r.text, type: r.type, due: due != null ? due : r.due, doneAt: Date.now(), status, repeat: r.repeat || null, cat: r.cat != null ? r.cat : null });
+  if (hid != null && h.some(x => x.id === hid)) return;
+  h.unshift({ id: hid != null ? hid : uid(), rid: r.id, test: r.test || undefined, text: r.text, type: r.type, due: due != null ? due : r.due, doneAt: Date.now(), status, repeat: r.repeat || null, cat: r.cat != null ? r.cat : null });
   if (h.length > 3000) h.length = 3000;
   remHistSet(h);
 }
@@ -1356,7 +1383,7 @@ function archiveExpired() {
   const l = remGet(), lim = Date.now() - 3600000;
   const old = l.filter(r => !r.repeat && !r.done && r.due < lim);
   if (!old.length) return;
-  old.forEach(r => { if (!r.series) remToHist(r, "expired"); }); // zilele din serie nu încarcă istoricul
+  old.forEach(r => { if (!r.series) remToHist(r, "expired", r.due, `${r.id}@${r.due}`); }); // zilele din serie nu încarcă istoricul
   remSet(l.filter(r => !old.includes(r)));
 }
 function remDone(id) {
@@ -2088,8 +2115,10 @@ function renderSettings() {
   const lm = +localStorage.getItem("lastMirror") || 0;
   byId("autoBkInfo").textContent = !isNative ? "" : lm ? "Ultima copie automată: " + new Date(lm).toLocaleString("ro-RO") : "Copia automată se face la prima modificare.";
   byId("verInfo").textContent = "Secretara " + APP_VER;
+  byId("alarmsHere").value = alarmsHere();
+  syncRender(); syncEnsure();
 }
-const APP_VER = "v3.4 · 19.11.2026";
+const APP_VER = "v3.5 · 20.11.2026";
 async function sndChanged() {
   lsSetRaw("sndAlarm", byId("sndAlarm").value);
   lsSetRaw("sndLen", byId("sndLen").value);
@@ -2189,7 +2218,7 @@ async function settingsCheck() {
   byId("setInfo").textContent = out.join(" · ");
 }
 async function testAlarm() {
-  await createReminder("Test alarmă", Date.now() + 15000, "alarm");
+  await createReminder("Test alarmă", Date.now() + 15000, "alarm", null, null, { test: true }); // test: nu se sincronizează
   byId("setInfo").textContent = "Alarmă de test programată. Blochează ecranul și așteaptă 15 secunde.";
 }
 
@@ -2306,7 +2335,7 @@ function remTick() {
       const late = now - r.due; ch = true;
       if (r.repeat) {
         const shown = Object.assign({}, r);
-        remToHist(shown, "expired", shown.due); // apariția care a trecut intră în istoric
+        remToHist(shown, "expired", shown.due, `${r.id}@${shown.due}`); // apariția care a trecut intră în istoric
         r.due = nextOcc(r.due, r.repeat, now);
         if (!isNative || late < 90000) fire.push(shown);
       } else {
@@ -2315,8 +2344,277 @@ function remTick() {
       }
     }
   });
-  if (ch) { remSet(l); fire.forEach(r => showRemAlert(r, now - r.due > 60000)); refresh(); }
+  if (ch) { remSet(l); fire.filter(notifOk).forEach(r => showRemAlert(r, now - r.due > 60000)); refresh(); }
 }
+
+// ====================================================================
+//  Pe acest telefon sună: toate / doar memento-urile / nimic
+// ====================================================================
+function alarmsHere() { const v = localStorage.getItem("alarmsHere"); return v === "memo" || v === "none" ? v : "all"; }
+function notifOk(r) { const m = alarmsHere(); return !!(r && (r.test || m === "all" || (m === "memo" && r.type !== "alarm"))); }
+async function alarmsHereChanged() {
+  localStorage.setItem("alarmsHere", byId("alarmsHere").value);
+  const info = byId("alarmsInfo");
+  if (isNative) {
+    info.textContent = "⏳ Aplic…";
+    for (const r of remGet()) { if (!r.test) await cancelNative(r); }
+    await syncNative();
+  }
+  info.textContent = { all: "✅ Pe acest telefon sună alarmele și memento-urile.",
+    memo: "✅ Pe acest telefon sună doar memento-urile. Alarmele apar doar în listă.",
+    none: "✅ Pe acest telefon nu sună nimic. Memento-urile și alarmele apar doar în listă." }[alarmsHere()];
+}
+
+// ====================================================================
+//  Sincronizare între telefoane (Firebase: cont cu email + parolă, baza de date Firestore)
+//  Fiecare element = un document: users/{uid}/items/{cheie~id}
+//    { k: cheia listei, id, j: elementul ca JSON | del: true (șters), u: ora modificării, s: ora serverului, dev }
+//  sync_shadow = ce știm că e deja pe server (amprentă per document) → trimitem doar diferențele
+// ====================================================================
+const FB_CONFIG = {
+  apiKey: "AIzaSyC-IHgFWGZ4b-9wQ_xxSb3oIvc7TOzgdz8",
+  authDomain: "secretara-58cb2.firebaseapp.com",
+  projectId: "secretara-58cb2",
+  storageBucket: "secretara-58cb2.firebasestorage.app",
+  messagingSenderId: "93395183992",
+  appId: "1:93395183992:web:5b70c2b79ab732b64ec08d"
+};
+const FB_FILES = ["firebase/firebase-app-compat.js", "firebase/firebase-auth-compat.js", "firebase/firebase-firestore-compat.js"];
+const SYNC_FRONT = ["tasks", "history", "remHistory"]; // listele în care elementele noi stau primele
+var SY = null; // „var”: lsSet poate fi apelat înainte să ajungă codul aici
+var syncT = null;
+
+function hashStr(s) { // amprentă scurtă (cyrb53)
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+const syncDocId = (k, id) => k + "~" + id;
+function syncLoadObj(k) { try { const v = JSON.parse(localStorage.getItem(k)); return v && typeof v === "object" ? v : {}; } catch (e) { return {}; } }
+function syncSave() {
+  if (!SY) return;
+  try {
+    localStorage.setItem("sync_shadow", JSON.stringify(SY.shadow));
+    localStorage.setItem("sync_dirty", JSON.stringify(SY.dirty));
+    localStorage.setItem("sync_seen", String(SY.seen));
+  } catch (e) {}
+}
+function syncMsg(t) { if (SY) SY.msg = t; const e = byId("syncInfo"); if (e) e.textContent = t; }
+function syncLastTxt() {
+  const t = +localStorage.getItem("sync_last") || 0;
+  return t ? " Ultima sincronizare: " + new Date(t).toLocaleString("ro-RO", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) + "." : "";
+}
+function syncOkMsg() { if (SY && SY.user) syncMsg(`✅ Conectat ca ${SY.user.email}.` + syncLastTxt()); }
+
+// toate elementele locale, pe documente
+function syncLocalDocs() {
+  const out = {};
+  DATA_KEYS.forEach(k => arr(lsGet(k, [])).forEach(x => {
+    if (!x || x.id == null || x.test) return;
+    const j = JSON.stringify(x);
+    out[syncDocId(k, x.id)] = { k, item: x, j, h: hashStr(j) };
+  }));
+  return out;
+}
+// ce s-a schimbat local față de server; notează și când s-a observat schimbarea (pentru conflicte)
+function syncDiff() {
+  const cur = syncLocalDocs(), sh = SY.shadow, now = Date.now(), ch = new Set();
+  for (const id in cur) if (sh[id] !== cur[id].h) ch.add(id);
+  for (const id in sh) if (!cur[id]) ch.add(id);
+  ch.forEach(id => { if (!SY.dirty[id]) SY.dirty[id] = now; });
+  for (const id in SY.dirty) if (!ch.has(id)) delete SY.dirty[id];
+  syncSave();
+  return { cur, ch: [...ch] };
+}
+// apelat la fiecare salvare locală (prin lsSet)
+function syncTouched() {
+  if (!SY || !SY.user) return;
+  clearTimeout(syncT); syncT = setTimeout(syncPush, 700);
+}
+async function syncPush() {
+  if (!SY || !SY.user || !SY.col) return;
+  if (!SY.ready) { if (!SY.fresh) syncDiff(); return; } // înainte de prima citire de pe server doar notăm
+  if (SY.pushing) { SY.again = true; return; }
+  const { cur, ch } = syncDiff();
+  if (!ch.length) return;
+  SY.pushing = true;
+  const user = SY.user;
+  try {
+    const TS = firebase.firestore.FieldValue.serverTimestamp();
+    for (let i = 0; i < ch.length; i += 400) {
+      const part = ch.slice(i, i + 400), b = SY.db.batch(), sent = {};
+      part.forEach(id => {
+        const c = cur[id], u = SY.dirty[id] || Date.now();
+        if (c) { b.set(SY.col.doc(id), { k: c.k, id: c.item.id, j: c.j, u, s: TS, dev: SY.dev }); sent[id] = c.h; }
+        else { b.set(SY.col.doc(id), { k: id.split("~")[0], del: true, u, s: TS, dev: SY.dev }); sent[id] = null; }
+      });
+      if (ch.length > 50) syncMsg(`⏳ Trimit datele pe server… ${Math.min(i + 400, ch.length)} / ${ch.length}`);
+      await b.commit(); // fără internet așteaptă aici până revine conexiunea
+      if (SY.user !== user) return; // între timp s-a deconectat
+      for (const id in sent) { if (sent[id]) SY.shadow[id] = sent[id]; else delete SY.shadow[id]; delete SY.dirty[id]; }
+      syncSave();
+    }
+    localStorage.setItem("sync_last", String(Date.now()));
+    syncOkMsg();
+  } catch (e) {
+    syncMsg("⚠️ Nu am putut trimite modificările: " + syncErr(e) + " Reîncerc la următoarea modificare sau cu „Sincronizează acum”.");
+  } finally {
+    SY.pushing = false;
+    if (SY.again) { SY.again = false; syncPush(); }
+  }
+}
+// modificări venite de pe alte telefoane
+function syncOnSnap(snap) {
+  if (!SY || !SY.user) return;
+  const lists = {}, L = k => lists[k] || (lists[k] = arr(lsGet(k, [])));
+  const remCh = [], changed = new Set(); let maxS = SY.seen;
+  snap.docChanges().forEach(c => {
+    if (c.type === "removed" || c.doc.metadata.hasPendingWrites) return;
+    const id = c.doc.id, d = c.doc.data();
+    if (d.s && d.s.toMillis) maxS = Math.max(maxS, d.s.toMillis());
+    if (!DATA_KEYS.includes(d.k)) return;
+    const list = L(d.k), idx = list.findIndex(x => x && syncDocId(d.k, x.id) === id);
+    const localH = idx >= 0 ? hashStr(JSON.stringify(list[idx])) : null;
+    const remoteH = d.del ? null : hashStr(String(d.j));
+    if (localH === remoteH) { // deja la fel (de obicei: confirmarea propriei modificări)
+      if (remoteH) SY.shadow[id] = remoteH; else delete SY.shadow[id];
+      delete SY.dirty[id]; return;
+    }
+    if (SY.dirty[id] && SY.dirty[id] > (d.u || 0)) return; // modificarea de pe acest telefon e mai nouă: rămâne
+    delete SY.dirty[id];
+    const old = idx >= 0 ? list[idx] : null;
+    let item = null;
+    if (d.del) { if (idx >= 0) list.splice(idx, 1); delete SY.shadow[id]; }
+    else {
+      try { item = JSON.parse(d.j); } catch (e) { return; }
+      if (idx >= 0) list[idx] = item; else if (SYNC_FRONT.includes(d.k)) list.unshift(item); else list.push(item);
+      SY.shadow[id] = remoteH;
+    }
+    changed.add(d.k);
+    if (d.k === "reminders") remCh.push([old, item]);
+  });
+  // salvăm doar listele schimbate (lsSet → copia automată; diferența față de server e zero, deci nu retrimite nimic)
+  changed.forEach(k => lsSet(k, lists[k]));
+  SY.seen = maxS; syncSave();
+  if (!snap.metadata.fromCache) localStorage.setItem("sync_last", String(Date.now()));
+  if (changed.size) refresh();
+  // alarmele de pe acest telefon: anulăm ce s-a schimbat / șters și programăm ce e nou
+  remCh.forEach(([o, n]) => {
+    if (o) cancelNative(o).then(() => { if (n && !n.done) scheduleNative(n); });
+    else if (n && !n.done) scheduleNative(n);
+  });
+  if (!SY.ready && !snap.metadata.fromCache) {
+    SY.ready = true; SY.fresh = false;
+    syncPush();
+  }
+  if (!SY.pushing) syncOkMsg();
+}
+function syncListen() {
+  if (SY.unsub) { try { SY.unsub(); } catch (e) {} SY.unsub = null; }
+  const from = firebase.firestore.Timestamp.fromMillis(Math.max(1, SY.seen - 120000)); // 2 min rezervă
+  // includeMetadataChanges: aflăm și când datele vin de pe server (nu din cache), chiar dacă nu s-a schimbat nimic
+  SY.unsub = SY.col.where("s", ">", from).onSnapshot({ includeMetadataChanges: true }, syncOnSnap, e => {
+    syncMsg("⚠️ Sincronizarea s-a oprit: " + syncErr(e) + " Apasă „Sincronizează acum”.");
+  });
+}
+function syncStart(user) {
+  SY.user = user;
+  if (localStorage.getItem("sync_uid") !== user.uid) { // alt cont (sau prima conectare): pornim de la zero
+    ["sync_shadow", "sync_dirty", "sync_seen", "sync_last"].forEach(k => localStorage.removeItem(k));
+    localStorage.setItem("sync_uid", user.uid);
+  }
+  SY.shadow = syncLoadObj("sync_shadow"); SY.dirty = syncLoadObj("sync_dirty");
+  SY.seen = +localStorage.getItem("sync_seen") || 0;
+  // prima sincronizare pe acest telefon: întâi aducem ce e pe server, apoi trimitem ce are în plus telefonul
+  SY.fresh = !SY.seen && !Object.keys(SY.shadow).length;
+  SY.ready = false;
+  SY.col = SY.db.collection("users").doc(user.uid).collection("items");
+  syncMsg(SY.fresh ? "⏳ Prima sincronizare: aduc datele de pe server…" : "⏳ Sincronizez…");
+  syncRender();
+  syncListen();
+}
+function syncStop() {
+  if (!SY) return;
+  if (SY.unsub) { try { SY.unsub(); } catch (e) {} SY.unsub = null; }
+  SY.user = null; SY.col = null; SY.ready = false;
+  syncRender();
+}
+function syncErr(e) {
+  const c = (e && e.code) || "";
+  const m = {
+    "auth/invalid-credential": "emailul sau parola nu sunt corecte.", "auth/wrong-password": "parola nu e corectă.",
+    "auth/user-not-found": "nu există cont cu acest email.", "auth/invalid-email": "emailul nu e scris corect.",
+    "auth/missing-password": "scrie parola.", "auth/too-many-requests": "prea multe încercări; mai așteaptă câteva minute.",
+    "auth/network-request-failed": "nu e internet.", "auth/user-disabled": "contul e dezactivat.",
+    "permission-denied": "acces refuzat (verifică regulile din Firestore → Rules).", "unavailable": "serverul nu răspunde (poate nu e internet)."
+  }[c.replace(/^firestore\//, "")];
+  return m || errMsg(e);
+}
+function loadScript(src) {
+  return new Promise((ok, no) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => no(new Error("nu găsesc " + src)); document.head.append(s); });
+}
+// încarcă Firebase doar când e nevoie (cont conectat sau deschiderea Setărilor)
+async function syncEnsure() {
+  if (SY) return SY.ok;
+  SY = { ok: false, user: null, shadow: {}, dirty: {}, seen: 0, msg: "" };
+  let dev = localStorage.getItem("sync_dev");
+  if (!dev) { dev = (isNative ? "tel-" : "web-") + Math.random().toString(36).slice(2, 8); localStorage.setItem("sync_dev", dev); }
+  SY.dev = dev;
+  try {
+    if (!window.firebase) for (const f of FB_FILES) await loadScript(f);
+    if (!firebase.apps.length) firebase.initializeApp(FB_CONFIG);
+    SY.auth = firebase.auth(); SY.db = firebase.firestore();
+    SY.ok = true;
+    SY.auth.onAuthStateChanged(u => { if (u) syncStart(u); else { syncStop(); if (!SY.msg) syncMsg("Neconectat. Scrie emailul și parola contului Secretara."); } });
+  } catch (e) {
+    syncMsg("⚠️ Sincronizarea nu e disponibilă: " + errMsg(e));
+  }
+  syncRender();
+  return SY.ok;
+}
+function syncRender() {
+  const on = !!(SY && SY.user);
+  const o = byId("syncOut"), i = byId("syncIn");
+  if (o) o.hidden = on;
+  if (i) i.hidden = !on;
+  const e = byId("syncInfo"); if (e && SY) e.textContent = SY.msg || "";
+}
+async function syncLogin() {
+  const email = byId("syncEmail").value.trim(), pass = byId("syncPass").value;
+  if (!email || !pass) { syncMsg("Scrie emailul și parola."); return; }
+  if (!(await syncEnsure())) return;
+  syncMsg("⏳ Mă conectez…");
+  try {
+    await SY.auth.signInWithEmailAndPassword(email, pass);
+    byId("syncPass").value = "";
+  } catch (e) { syncMsg("⚠️ Nu m-am putut conecta: " + syncErr(e)); }
+}
+async function syncForgot() {
+  const email = byId("syncEmail").value.trim();
+  if (!email) { syncMsg("Scrie întâi emailul în căsuța de sus, apoi apasă din nou „Am uitat parola”."); return; }
+  if (!(await syncEnsure())) return;
+  try {
+    await SY.auth.sendPasswordResetEmail(email);
+    syncMsg(`📧 Am trimis un email la ${email} cu un link pentru parolă nouă. Uită-te și în Spam.`);
+  } catch (e) { syncMsg("⚠️ " + syncErr(e)); }
+}
+function syncNow() {
+  if (!SY || !SY.user) return;
+  syncMsg("⏳ Sincronizez…");
+  SY.ready = false; // recitește de pe server ce s-a schimbat, apoi trimite diferențele
+  syncListen();
+}
+async function syncLogout() {
+  if (!SY || !SY.user) return;
+  if (!confirm("Te deconectezi de la sincronizare? Datele rămân pe acest telefon, dar nu se mai sincronizează.")) return;
+  try { await SY.auth.signOut(); } catch (e) {}
+  ["sync_uid", "sync_shadow", "sync_dirty", "sync_seen", "sync_last"].forEach(k => localStorage.removeItem(k));
+  SY.msg = ""; syncMsg("Deconectat. Datele au rămas pe telefon.");
+}
+// la pornire: dacă telefonul a fost conectat, pornim sincronizarea
+function syncBoot() { if (localStorage.getItem("sync_uid")) syncEnsure(); }
 
 // ====================================================================
 //  Backup și restaurare
@@ -2372,7 +2670,8 @@ autoRestore();
 syncNative();
 remTick();
 setInterval(remTick, 1000);
-document.addEventListener("visibilitychange", () => { if (!document.hidden) { remTick(); syncNative(); } });
+syncBoot();
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { remTick(); syncNative(); syncTouched(); } });
 if (isNative) {
   const lb = +localStorage.getItem("lastBackup") || 0;
   if ((remGet().length || tasksGet().length) && Date.now() - lb > 7 * 86400000)
