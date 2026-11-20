@@ -26,12 +26,17 @@ jobs:
       - run: |
           mkdir -p ~/.android
           if [ -f debug.keystore ]; then cp debug.keystore ~/.android/debug.keystore; else echo "::error::debug.keystore lipseste - APK-ul ar avea alta semnatura, nu s-ar instala peste cel vechi si ai pierde datele. Urca debug.keystore in repo."; exit 1; fi
-      - run: |
-          mkdir -p www
-          cp index.html www/index.html
-          # bibliotecile Firebase (sincronizare); fara ele aplicatia merge, dar nu sincronizeaza
-          # merg si urcate direct in repo (langa index.html), si intr-un folder firebase
+      # NATIVE = amprenta partii de Android (plugin-uri, build_android.py, config).
+      # Daca e aceeasi ca pe telefon, update-ul se face singur din aplicatie; daca difera, aplicatia cere APK-ul nou.
+      - name: Pregateste pagina (www)
+        run: |
+          NATIVE=$(cat package.json build_android.py capacitor.config.json | sha256sum | cut -c1-8)
+          echo "NATIVE=$NATIVE" >> "$GITHUB_ENV"
+          OWNER=$(echo "${{ github.repository_owner }}" | tr 'A-Z' 'a-z')
+          PAGES="https://$OWNER.github.io/${{ github.event.repository.name }}/"
           mkdir -p www/firebase
+          sed -e "s/__BUILD__/$GITHUB_RUN_NUMBER/" -e "s/__NATIVE__/$NATIVE/" -e "s#__PAGES__#$PAGES#" index.html > www/index.html
+          # bibliotecile Firebase (sincronizare): urcate direct in repo (langa index.html) sau intr-un folder firebase
           for f in firebase-app-compat.js firebase-auth-compat.js firebase-firestore-compat.js; do
             if [ -f "$f" ]; then cp "$f" www/firebase/; elif [ -f "firebase/$f" ]; then cp "firebase/$f" www/firebase/; else echo "::warning::Lipseste $f - aplicatia nu va putea sincroniza. Urca-l in repo langa index.html."; fi
           done
@@ -41,6 +46,7 @@ jobs:
         continue-on-error: true
         run: |
           python3 build_android.py --extras
+          sed -i -E "s/versionCode [0-9]+/versionCode $GITHUB_RUN_NUMBER/; s/versionName \"[^\"]*\"/versionName \"$GITHUB_RUN_NUMBER.$NATIVE\"/" android/app/build.gradle
           npx cap sync android
           cd android
           chmod +x gradlew
@@ -52,6 +58,7 @@ jobs:
           rm -rf android
           npx cap add android
           python3 build_android.py
+          sed -i -E "s/versionCode [0-9]+/versionCode $GITHUB_RUN_NUMBER/; s/versionName \"[^\"]*\"/versionName \"$GITHUB_RUN_NUMBER.$NATIVE\"/" android/app/build.gradle
           npx cap sync android
           cd android
           chmod +x gradlew
@@ -68,10 +75,49 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Secretara build ${{ github.run_number }} ${{ steps.full.outcome == 'success' && '(complet)' || '(fara widget)' }} · semnatura ${{ steps.sig.outputs.short }}
-          body: "Semnatura SHA-256: ${{ steps.sig.outputs.fp }} — trebuie sa fie aceeasi la toate build-urile."
+          name: Secretara build ${{ github.run_number }} ${{ steps.full.outcome == 'success' && '(complet)' || '(fara widget)' }} · semnatura ${{ steps.sig.outputs.short }} · android ${{ env.NATIVE }}
+          body: "Semnatura SHA-256: ${{ steps.sig.outputs.fp }} — trebuie sa fie aceeasi la toate build-urile. Partea de Android: ${{ env.NATIVE }} (daca e aceeasi ca la build-ul anterior, telefoanele se actualizeaza singure, fara APK)."
           files: android/app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           name: secretara-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+  # varianta de PC + pachetul de update pentru telefoane, publicate pe GitHub Pages
+  # (o singura data: repo → Settings → Pages → Source: GitHub Actions)
+  # porneste dupa APK, ca butonul „Descarca APK-ul nou” sa gaseasca deja release-ul
+  web:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pregateste varianta PC si pachetul de update
+        run: |
+          NATIVE=$(cat package.json build_android.py capacitor.config.json | sha256sum | cut -c1-8)
+          OWNER=$(echo "${{ github.repository_owner }}" | tr 'A-Z' 'a-z')
+          PAGES="https://$OWNER.github.io/${{ github.event.repository.name }}/"
+          mkdir -p site/firebase site/update
+          sed -e "s/__BUILD__/$GITHUB_RUN_NUMBER/" -e "s/__NATIVE__/$NATIVE/" -e "s#__PAGES__#$PAGES#" index.html > site/index.html
+          for f in firebase-app-compat.js firebase-auth-compat.js firebase-firestore-compat.js; do
+            if [ -f "$f" ]; then cp "$f" site/firebase/; elif [ -f "firebase/$f" ]; then cp "firebase/$f" site/firebase/; else echo "::warning::Lipseste $f - varianta PC nu va putea sincroniza."; fi
+          done
+          touch site/.nojekyll
+          # pachetul pentru telefoane = aceeasi pagina (index.html + firebase), cu numele build-ului
+          (cd site && zip -qr "update/bundle-$GITHUB_RUN_NUMBER.zip" index.html firebase)
+          cat > site/update/version.json <<EOF
+          {"version": $GITHUB_RUN_NUMBER, "native": "$NATIVE", "url": "${PAGES}update/bundle-$GITHUB_RUN_NUMBER.zip", "apk": "https://github.com/${{ github.repository }}/releases/latest/download/app-debug.apk"}
+          EOF
+          cat site/update/version.json
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
