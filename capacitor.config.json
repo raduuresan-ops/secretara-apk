@@ -1,6 +1,6 @@
 {
   "appId": "ro.secretara.app",
-  "appName": "Secretara",
+  "appName": "Planner",
   "webDir": "www",
   "android": {
     "adjustMarginsForEdgeToEdge": "auto"

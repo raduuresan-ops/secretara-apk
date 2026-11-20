@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
-  <title>Secretara</title>
+  <title>Planner</title>
   <style>
 *{box-sizing:border-box}
 :root{--bg:#0f1117;--card:#1b1f2a;--item:#2a2f3d;--accent:#4f8cff;--muted:#9aa3b5;--ok:#2ecc71;--bad:#e74c3c}
@@ -96,6 +96,19 @@ details.sgrp .sub{display:block;margin-top:16px;font-size:14px}
 .lst input{width:auto;margin:2px 0 0;flex:0 0 auto;transform:scale(1.2)}
 .lst li.ok span{text-decoration:line-through;color:var(--muted)}
 .lst li span{flex:1 1 auto;word-break:break-word}
+.lfile .lhead{display:flex;align-items:center;gap:8px;cursor:pointer}
+.lfile .lhead .txt{flex:1 1 auto;margin:0;font-weight:600}
+.lcount{font-size:12px;color:var(--muted);background:#343b4d;border-radius:8px;padding:1px 7px}
+.lfile.open{outline:1px solid #3a4a6e}
+#gate{position:fixed;inset:0;z-index:200;background:var(--bg);overflow:auto;padding:16px}
+#gate .gcard{max-width:420px;margin:12vh auto 0;background:var(--card);border-radius:14px;padding:20px}
+#gate h1{font-size:24px;margin:0 0 6px}
+.vis label{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:14px}
+.vis input[type=checkbox]{width:auto;margin:0;transform:scale(1.2)}
+#helpSearch{margin-bottom:6px}
+.news{background:#222838;border-radius:8px;padding:6px 10px;margin-top:6px}
+.news b{font-size:13px;color:#cfd6e4}
+.hHide{display:none !important}
 /* varianta PC (browser): doar text, fără microfon și fără sunete */
 body.pc .nativeOnly,body.pc #btnRecord{display:none}
 body:not(.pc) .pcOnly{display:none}
@@ -113,10 +126,23 @@ body.pc .app{max-width:900px}
 <body>
 <div class="app">
 
+  <!-- ecranul de conectare: apare până la prima conectare pe acest dispozitiv -->
+  <div id="gate" hidden>
+    <div class="gcard">
+      <h1 id="gateTitle">🎤 Planner</h1>
+      <p class="calHint">Conectează-te cu emailul și parola contului tău. Fiecare cont își vede doar datele lui.</p>
+      <input id="gateEmail" type="email" placeholder="Email" autocomplete="username" />
+      <input id="gatePass" type="password" placeholder="Parola" autocomplete="current-password" />
+      <button class="primary wide" onclick="gateLogin()">🔑 Conectează</button>
+      <button onclick="gateForgot()">❓ Am uitat parola</button>
+      <p id="gateInfo" class="calHint"></p>
+    </div>
+  </div>
+
   <header class="top">
-    <h1>🎤 Secretara</h1>
+    <h1 id="appTitle">🎤 Planner</h1>
     <div>
-      <button class="icon" onclick="openView('help')" title="Ajutor">❓</button>
+      <button class="icon" id="btnHelp" onclick="openView('help')" title="Ajutor">❓</button>
       <button class="icon" onclick="openView('settings')" title="Setări">⚙️</button>
     </div>
   </header>
@@ -158,7 +184,7 @@ body.pc .app{max-width:900px}
     <div class="chips" id="chips-tasks"></div>
     <input id="searchBox" placeholder="🔎 Caută în sarcini…" />
     <div id="todoList"></div>
-    <div class="row" style="margin-top:10px;">
+    <div class="row" id="exportRow" style="margin-top:10px;">
       <button onclick="exportCSV()">📊 Export Excel (CSV)</button>
       <button onclick="exportList()">📄 Listă de printat (PDF)</button>
     </div>
@@ -237,6 +263,15 @@ body.pc .app{max-width:900px}
     <h2>⚙️ Setări</h2>
     <button onclick="backToTab()">⬅️ Înapoi</button>
     <p id="setInfo" class="calHint"></p>
+
+    <details class="sgrp" data-g="vis">
+      <summary>👁️ Ce se vede pe ecran</summary>
+      <label class="lbl" for="titleIn">Numele afișat sus în aplicație</label>
+      <input id="titleIn" type="text" maxlength="30" placeholder="Secretara" onchange="uiChanged()" />
+      <p class="calHint">Bifează ce vrei să apară pe ecranul acestui dispozitiv (pe celelalte rămâne cum ai ales acolo). ⚙️ Setări apare mereu.</p>
+      <div class="vis" id="visList"></div>
+      <p id="visInfo" class="calHint"></p>
+    </details>
 
     <details class="sgrp" data-g="notif">
       <summary>🔔 Alarme și notificări</summary>
@@ -395,6 +430,11 @@ body.pc .app{max-width:900px}
   <section class="card view help" id="v-help" hidden>
     <h2>❓ Ajutor</h2>
     <button onclick="backToTab()">⬅️ Înapoi</button>
+    <input id="helpSearch" type="search" placeholder="🔎 Caută în ajutor (ex. listă, alarmă, folder, PC)…" oninput="helpFilter()" />
+    <p id="helpNone" class="calHint" hidden>Nimic găsit. Încearcă alt cuvânt.</p>
+
+    <h3>📰 Noutăți (ce s-a schimbat la fiecare versiune)</h3>
+    <div id="newsList"></div>
 
     <h3>🎤 Cum dictezi</h3>
     <ul>
@@ -1080,6 +1120,7 @@ function renderView(v) {
   else if (v === "hist") renderHist();
   else if (v === "dict") renderDict();
   else if (v === "settings") renderSettings();
+  else if (v === "help") renderNews();
 }
 function renderBadges() {
   byId("bTasks").textContent = tasksGet().length || "";
@@ -1157,14 +1198,38 @@ function listAddItem(key, id) {
   x.list = (x.list || []).concat(splitItems(v).map(s => ({ t: s, d: false })));
   lsSet(key, l); refresh();
 }
+// listele apar ca fișiere: doar numele; la atingere se deschid (lista nou făcută e deschisă)
+const listOpen = new Set();
+function listFileItem(t) {
+  const box = el("div", { class: "item lfile" + (listOpen.has(t.id) ? " open" : "") });
+  const doneN = t.list.filter(x => x.d).length;
+  const head = el("div", { class: "lhead", onclick: () => { listOpen.has(t.id) ? listOpen.delete(t.id) : listOpen.add(t.id); renderTasks(); } }, [
+    el("span", { class: "txt", text: (listOpen.has(t.id) ? "📂 " : "📄 ") + t.text }),
+    el("span", { class: "lcount", text: `${doneN}/${t.list.length}` }),
+    folderTag(t) || ""
+  ]);
+  box.append(head);
+  if (!listOpen.has(t.id)) return box;
+  box.append(
+    listView(t, "tasks", true),
+    el("small", { text: `${t.day} ${t.time}` }),
+    el("div", { class: "row" }, [
+      el("button", { class: "doneBtn", text: "✔ Gata", onclick: () => markDone(t.id) }),
+      el("button", { text: "➕ Element", onclick: () => listAddItem("tasks", t.id) }),
+      el("button", { text: "✏️ Redenumește", onclick: () => editInline(box, t, "tasks") }),
+      el("button", { text: "📁", title: "Mută în subfolder", onclick: () => folderPicker(box, t, "tasks", "tasks") }),
+      el("button", { text: "📤 Trimite", onclick: () => shareText(formatTask(t)) }),
+      el("button", { class: "deleteBtn", text: "Șterge", onclick: () => deleteTask(t.id) })
+    ]));
+  return box;
+}
 function taskItem(t) {
+  if (Array.isArray(t.list)) return listFileItem(t);
   const box = el("div", { class: "item" });
   const extra = (t.priority === "urgent" ? " 🔴" : t.priority === "important" ? " 🟡" : "") + (t.due ? ` 📅 ${t.due}` : "");
-  const isList = Array.isArray(t.list);
-  const doneN = isList ? t.list.filter(x => x.d).length : 0;
+  const isList = false;
   box.append(
-    el("div", { class: "txt", text: (isList ? "📋 " : "") + t.text + extra + (isList ? `  (${doneN}/${t.list.length})` : "") }),
-    isList ? listView(t, "tasks", true) : "",
+    el("div", { class: "txt", text: t.text + extra }),
     el("small", { text: `${t.day} ${t.time}` }, [folderTag(t) || ""]),
     el("div", { class: "row" }, [
       el("button", { class: "doneBtn", text: "✔ Gata", onclick: () => markDone(t.id) }),
@@ -1941,23 +2006,39 @@ function parseFolderPart(text) {
   return { name, kind };
 }
 // partea de listă: „pune în liste următoarea listă cuprinzând: a; b” → { title, folderName, here, items }
+// verbul de la început + cuvântul „listă” undeva în primele cuvinte (ex. „pune în folderul Cumpărături o listă cu …”)
+const LIST_START = new RegExp("^\\s*[,.;]?\\s*(?:si\\s+)?" + CMD_VERB + "\\b");
+const LIST_WORD = /\b(?:(?:o|un|noua|urmatoarea)\s+)*(?:lista|liste|listele|listei|listuta)\b/;
+const WEAK_MARK = /[\s,]\bcu\b(?!\s+(?:numele|denumirea|titlul))\s*:?/;
 function parseListPart(text) {
-  const n = normEq(text); const m = LIST_CMD.exec(n); if (!m) return null;
-  let rest = text.slice(m[0].length), rn = normEq(rest);
-  const im = ITEMS_MARK.exec(rn);
+  const n = normEq(text);
+  const vm = LIST_START.exec(n); if (!vm) return null;
+  const lw = LIST_WORD.exec(n.slice(vm[0].length));
+  if (!lw || lw.index > 70) return null;
+  const lwS = vm[0].length + lw.index, lwE = lwS + lw[0].length;
+  // începutul elementelor: un marcaj clar („următoarele”, „cuprinzând”, „:”), altfel primul „cu”, altfel imediat după „listă”
+  let itemsAt = -1, markLen = 0, minItems = 3; // fără niciun marcaj cerem cel puțin 3 elemente
+  const im = ITEMS_MARK.exec(n.slice(lwE));
+  if (im) { itemsAt = lwE + im.index; markLen = im[0].length; minItems = 1; }
+  else { const wm = WEAK_MARK.exec(n.slice(lwE)); if (wm) { itemsAt = lwE + wm.index; markLen = wm[0].length; minItems = 2; } }
   let head, body;
-  if (im) { head = rest.slice(0, im.index); body = rest.slice(im.index + im[0].length); }
-  else { head = ""; body = rest; }
+  if (itemsAt >= 0) { head = text.slice(vm[0].length, lwS) + " " + text.slice(lwE, itemsAt); body = text.slice(itemsAt + markLen); }
+  else { head = text.slice(vm[0].length, lwS); body = text.slice(lwE); }
   const items = splitItems(body);
-  if (!items.length || (!im && items.length < 2)) return null; // „pune lista pe birou” rămâne sarcină
+  if (items.length < minItems) return null; // „pune lista cu prețuri pe birou” rămâne sarcină
   head = head.replace(/[\s,]+(?:cu|care|av[âa]nd|cuprinz[âa]nd)[\s,]*$/i, " "); // „… în folderul Casa cu: …”
   let hn = normEq(head), folderName = null, here = false, title = "";
   const fm = /\b(?:in|la)\s+(?:folderul|subfolderul|dosarul|categoria)\s+/.exec(hn);
-  if (fm) { // numele folderului: până la „cu numele / numită” sau până la final
+  if (fm) { // numele folderului: un folder existent (cel mai lung), altfel cuvintele până la „cu numele / numită / o / un” sau până la final
     const after = head.slice(fm.index + fm[0].length), an = normEq(after);
-    const stop = NAME_RE.exec(an);
-    folderName = trimPunct(stop ? after.slice(0, stop.index) : after);
-    head = head.slice(0, fm.index) + " " + (stop ? after.slice(stop.index) : ""); hn = normEq(head);
+    const at = an.trimStart();
+    const known = folderGet().map(f => f.name).filter(nm => { const k = normEq(nm); return at === k || at.startsWith(k + " ") || at.startsWith(k + ","); })
+      .sort((a, b) => b.length - a.length)[0];
+    let cut;
+    if (known) { cut = after.length - after.trimStart().length + known.length; }
+    else { const stop = /\s(?:cu\s+numele|numit|numita|denumit|denumita|cu\s+titlul|o|un|si)\b|[,.;]/.exec(an); cut = stop ? stop.index : after.length; }
+    folderName = trimPunct(known || after.slice(0, cut));
+    head = head.slice(0, fm.index) + " " + after.slice(cut); hn = normEq(head);
   }
   if (/\b(?:acolo|in\s+el|in\s+acesta|in\s+ea)\b/.test(hn)) { here = true; head = head.replace(/\b(?:acolo|[îi]n\s+el|[îi]n\s+acesta|[îi]n\s+ea)\b/gi, " "); hn = normEq(head); }
   const nm = NAME_RE.exec(hn);
@@ -1970,7 +2051,8 @@ function parseListPart(text) {
   }
   title = trimPunct(title.replace(/\s+/g, " "));
   if (title && !/^list/i.test(normEq(title))) title = /^(de|cu|pentru)\b/i.test(normEq(title)) ? "Listă " + title : capFirst(title);
-  return { title: title || "Listă " + new Date().toLocaleDateString("ro-RO", { day: "2-digit", month: "2-digit" }), folderName, here, items };
+  const d = new Date();
+  return { title: title || `Listă ${pad2(d.getDate())}.${pad2(d.getMonth() + 1)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`, folderName, here, items };
 }
 // întoarce true dacă textul a fost o comandă (și am făcut-o)
 function voiceCommand(text) {
@@ -1997,7 +2079,7 @@ function voiceCommand(text) {
     const item = { id: uid(), text: lp.title, list: lp.items.map(t => ({ t, d: false })),
       date: now.toLocaleString("ro-RO"), day: now.toLocaleDateString("ro-RO"), time: now.toLocaleTimeString("ro-RO"),
       done: false, priority: "", due: "", action: "created", cat: target ? target.id : null };
-    const l = tasksGet(); l.unshift(item); tasksSet(l);
+    const l = tasksGet(); l.unshift(item); tasksSet(l); listOpen.add(item.id);
     msgs.push(`📋 Am făcut lista „${lp.title}” cu ${lp.items.length} elemente` + (target ? ` în 📁 ${target.name}.` : "."));
     if (target) fSel.tasks = target.id; // arătăm direct folderul în care a intrat
   }
@@ -2373,12 +2455,13 @@ function renderSettings() {
   const dt = defTimeHM(); byId("defTime").value = `${pad2(dt.h)}:${pad2(dt.m)}`;
   const lm = +localStorage.getItem("lastMirror") || 0;
   byId("autoBkInfo").textContent = !isNative ? "" : lm ? "Ultima copie automată: " + new Date(lm).toLocaleString("ro-RO") : "Copia automată se face la prima modificare.";
-  byId("verInfo").textContent = "Secretara " + APP_VER + (isBuilt(BUILD_NO) ? " · build " + BUILD_NO : "");
+  byId("verInfo").textContent = "Planner " + APP_VER + (isBuilt(BUILD_NO) ? " · build " + BUILD_NO : "");
   byId("alarmsHere").value = alarmsHere();
   byId("dictMax").value = String(dictMaxMin()); byId("dictSil").value = String(dictSilSec());
+  renderVis();
   syncRender(); syncEnsure();
 }
-const APP_VER = "v4.0 · 20.11.2026";
+const APP_VER = "v4.2 · 21.11.2026";
 async function sndChanged() {
   lsSetRaw("sndAlarm", byId("sndAlarm").value);
   lsSetRaw("sndLen", byId("sndLen").value);
@@ -2897,10 +2980,9 @@ async function syncEnsure() {
     if (!firebase.apps.length) firebase.initializeApp(FB_CONFIG);
     SY.auth = firebase.auth(); SY.db = firebase.firestore();
     SY.ok = true;
-    SY.auth.onAuthStateChanged(u => { if (u) syncStart(u); else {
-      syncStop(); if (!SY.msg) syncMsg("Neconectat. Scrie emailul și parola contului Secretara.");
-      if (!isNative) flash("☁️ Ca să vezi aceleași date ca pe telefon, conectează-te: ⚙️ Setări → Sincronizare (același email și aceeași parolă).", "warnbox",
-        [el("button", { class: "doneBtn", text: "⚙️ Deschide Setări", onclick: () => { openView("settings"); byId("syncEmail").scrollIntoView({ block: "center" }); byId("syncEmail").focus(); } })]);
+    SY.auth.onAuthStateChanged(u => { if (u) { gateShow(false); syncStart(u); } else {
+      syncStop(); if (!SY.msg) syncMsg("Neconectat. Scrie emailul și parola contului.");
+      gateShow(true); // fără cont conectat aplicația nu se deschide
     } });
   } catch (e) {
     syncMsg("⚠️ Sincronizarea nu e disponibilă: " + errMsg(e));
@@ -2942,13 +3024,22 @@ function syncNow() {
 }
 async function syncLogout() {
   if (!SY || !SY.user) return;
-  if (!confirm("Te deconectezi de la sincronizare? Datele rămân pe acest telefon, dar nu se mai sincronizează.")) return;
+  const pend = Object.keys(SY.dirty || {}).length + (SY.pushing ? 1 : 0);
+  if (pend && !confirm(`⚠️ Ai ${pend} modificări care încă NU au ajuns pe server (probabil nu e internet). Dacă te deconectezi acum, se pierd. Continui totuși?`)) return;
+  if (!confirm(`Te deconectezi de la contul ${SY.user.email}?\n\nDatele contului se șterg de pe acest dispozitiv (rămân în cont și le primești înapoi când te conectezi din nou). Apoi apare ecranul de conectare.`)) return;
+  if (SY.unsub) { try { SY.unsub(); } catch (e) {} SY.unsub = null; }
+  SY.user = null; SY.col = null; SY.ready = false; // din acest moment ștergerile locale nu mai pleacă spre server
   try { await SY.auth.signOut(); } catch (e) {}
   ["sync_uid", "sync_shadow", "sync_dirty", "sync_seen", "sync_last"].forEach(k => localStorage.removeItem(k));
-  SY.msg = ""; syncMsg("Deconectat. Datele au rămas pe telefon.");
+  await wipeLocalData();
+  SY.msg = ""; syncMsg("Deconectat.");
+  gateMsg("Deconectat. Datele au rămas în cont. Conectează-te din nou (sau cu alt cont)."); gateShow(true);
 }
-// la pornire: dacă telefonul a fost conectat, pornim sincronizarea
-function syncBoot() { if (localStorage.getItem("sync_uid")) syncEnsure(); }
+// la pornire pornim mereu conectarea; ecranul de conectare apare dacă dispozitivul n-a fost încă conectat
+function syncBoot() {
+  if (!localStorage.getItem("sync_uid")) gateShow(true);
+  syncEnsure().then(ok => { if (!ok && !localStorage.getItem("sync_uid")) gateMsg("⚠️ Pentru prima conectare e nevoie de internet. " + (SY && SY.msg || "")); });
+}
 
 // ====================================================================
 //  Actualizări automate
@@ -3006,6 +3097,133 @@ async function updCheck(manual) {
 }
 
 // ====================================================================
+//  Ce se vede pe ecran (pe fiecare dispozitiv) + numele afișat
+// ====================================================================
+const UI_PARTS = [
+  ["tab:tasks", "📝 Tabul Sarcini"], ["tab:mem", "⏰ Tabul Memento"], ["tab:cal", "📅 Tabul Calendar"],
+  ["tab:hist", "📜 Tabul Istoric"], ["tab:dict", "📖 Tabul Dicționar"],
+  ["mic", "🎤 Butonul de dictare (telefon)"], ["save", "Butoanele „Ca sarcină / Ca memento / Ca alarmă”"],
+  ["export", "Butoanele „Export Excel / Listă de printat”"], ["help", "❓ Butonul Ajutor"]
+];
+function uiHidden() { try { const v = JSON.parse(localStorage.getItem("hideUi")); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+function appName() { return (localStorage.getItem("appTitle") || "").trim() || "Planner"; }
+function applyUi() {
+  const h = new Set(uiHidden());
+  document.querySelectorAll("#tabs button").forEach(b => { b.style.display = h.has("tab:" + b.dataset.v) ? "none" : ""; });
+  byId("btnHelp").style.display = h.has("help") ? "none" : "";
+  document.querySelector(".saveRow").style.display = h.has("save") ? "none" : "";
+  byId("exportRow").style.display = h.has("export") ? "none" : "";
+  if (isNative) byId("btnRecord").style.display = h.has("mic") ? "none" : "";
+  const nm = appName();
+  byId("appTitle").textContent = (isNative ? "🎤 " : "📝 ") + nm; byId("gateTitle").textContent = "🎤 " + nm; document.title = nm;
+  if (h.has("tab:" + lastTab)) { const first = TABS.find(t => !h.has("tab:" + t)); if (first && TABS.includes(curView)) openView(first); }
+}
+function renderVis() {
+  const box = byId("visList"); if (!box) return;
+  const h = new Set(uiHidden());
+  byId("titleIn").value = localStorage.getItem("appTitle") || "";
+  box.replaceChildren(...UI_PARTS.filter(([k]) => isNative || k !== "mic").map(([k, label]) => {
+    const c = el("input", { type: "checkbox" }); c.checked = !h.has(k); c.dataset.k = k;
+    c.addEventListener("change", uiChanged);
+    return el("label", {}, [c, label]);
+  }));
+}
+function uiChanged() {
+  const hide = [...document.querySelectorAll("#visList input")].filter(c => !c.checked).map(c => c.dataset.k);
+  if (TABS.every(t => hide.includes("tab:" + t))) { // măcar un tab trebuie să rămână
+    hide.splice(hide.indexOf("tab:tasks"), 1);
+    const c = document.querySelector('#visList input[data-k="tab:tasks"]'); if (c) c.checked = true;
+    byId("visInfo").textContent = "Măcar un tab trebuie să rămână vizibil: am lăsat Sarcini.";
+  } else byId("visInfo").textContent = "✅ Salvat.";
+  localStorage.setItem("hideUi", JSON.stringify(hide));
+  const t = byId("titleIn").value.trim(); if (t) localStorage.setItem("appTitle", t); else localStorage.removeItem("appTitle");
+  applyUi();
+}
+
+// ====================================================================
+//  Ecranul de conectare (prima dată pe fiecare dispozitiv) + deconectare care șterge datele de pe dispozitiv
+// ====================================================================
+function gateShow(on) { byId("gate").hidden = !on; if (on) setTimeout(() => byId("gateEmail").focus(), 100); }
+function gateMsg(t) { byId("gateInfo").textContent = t; }
+async function gateLogin() {
+  const email = byId("gateEmail").value.trim(), pass = byId("gatePass").value;
+  if (!email || !pass) { gateMsg("Scrie emailul și parola."); return; }
+  gateMsg("⏳ Mă conectez…");
+  if (!(await syncEnsure())) { gateMsg("⚠️ Conectarea nu e disponibilă (prima dată e nevoie de internet). " + (SY && SY.msg || "")); return; }
+  try { await SY.auth.signInWithEmailAndPassword(email, pass); byId("gatePass").value = ""; gateMsg(""); }
+  catch (e) { gateMsg("⚠️ Nu m-am putut conecta: " + syncErr(e)); }
+}
+async function gateForgot() {
+  const email = byId("gateEmail").value.trim();
+  if (!email) { gateMsg("Scrie întâi emailul, apoi apasă din nou „Am uitat parola”."); return; }
+  if (!(await syncEnsure())) { gateMsg("⚠️ E nevoie de internet."); return; }
+  try { await SY.auth.sendPasswordResetEmail(email); gateMsg(`📧 Am trimis un email la ${email} cu un link pentru parolă nouă. Uită-te și în Spam.`); }
+  catch (e) { gateMsg("⚠️ " + syncErr(e)); }
+}
+// șterge de pe acest dispozitiv datele contului (ele rămân în cont, pe server)
+async function wipeLocalData() {
+  for (const r of remGet()) { try { await cancelNative(r); } catch (e) {} }
+  DATA_KEYS.forEach(k => localStorage.setItem(k, "[]"));
+  localStorage.setItem("dictSeeded", "1");
+  try { await writeMirror(); } catch (e) {} // și copia automată din Documents, ca următorul cont să nu primească datele
+  listOpen.clear(); Object.keys(fSel).forEach(k => { fSel[k] = ""; });
+  refresh();
+}
+
+// ====================================================================
+//  Ajutor: Noutăți pe versiuni + căutare
+//  La fiecare versiune nouă se adaugă un rând SUS în CHANGELOG.
+// ====================================================================
+const CHANGELOG = [
+  ["v4.2", "21.11.2026", [
+    "Aplicația se numește acum „Planner” (sub iconiță, în titlu și pe PC). Datele, contul și sincronizarea rămân aceleași.",
+    "Numele de sub iconiță cere o singură dată APK-ul nou (butonul „📲 Descarcă APK-ul nou”); numele afișat sus îl poți schimba oricând din ⚙️ Setări → 👁️ Ce se vede pe ecran."
+  ]],
+  ["v4.1", "21.11.2026", [
+    "Ecran de conectare: aplicația se deschide doar după ce te conectezi (prima dată pe fiecare dispozitiv). Fiecare cont își vede doar datele lui.",
+    "„Deconectează” șterge de pe dispozitiv datele contului (rămân în cont); alt cont pornește curat, fără datele celui dinainte.",
+    "⚙️ Setări → 👁️ Ce se vede pe ecran: bifezi ce taburi și butoane apar (Sarcini, Memento, Calendar, Istoric, Dicționar, Ajutor, dictare, butoanele de salvare, export) și numele afișat sus.",
+    "Listele apar ca fișiere: doar numele (📄); la atingere se deschid (📂). Nume implicit „Listă zi.lună oră:minut”, schimbat cu ✏️ Redenumește.",
+    "Reparat: „pune în folderul Cumpărături o listă cu pâine, lapte, ouă” nu mai pune „În folderul…” ca prim element.",
+    "Ajutor: secțiunea Noutăți și căutare după cuvinte."
+  ]],
+  ["v4.0", "20.11.2026", [
+    "Setări pe secțiuni care se deschid una câte una.",
+    "Liste din voce: „pune în liste următoarea listă cuprinzând: a virgulă b virgulă c”, elemente unul sub altul, cu bifă și ➕ Element.",
+    "Subfolder din voce: „fă un folder la sarcini cu numele Dosare (apoi fă o listă acolo cu următoarele elemente: …)”.",
+    "Dictare: durată maximă (1–20 min sau fără limită) și oprire după liniște, cu cronometru."
+  ]],
+  ["v3.9", "20.11.2026", ["Reparat update-ul automat pe telefon (amprenta de verificare a pachetului)."]],
+  ["v3.8", "20.11.2026", [
+    "„Pe acest dispozitiv apar / sună”: toate / memento-urile sună, alarmele doar iconiță / nimic nu sună, doar iconiță în bara de sus / nimic.",
+    "PC: notificări Windows fără sunet, în dreapta jos (bandă galbenă până le permiți)."
+  ]],
+  ["v3.7", "20.11.2026", ["Update automat: telefonul descarcă singur versiunile noi; APK doar când se schimbă partea de Android (cu buton)."]],
+  ["v3.6", "20.11.2026", ["Varianta de PC (în browser): doar scris, Ctrl+Enter salvează, pop-up-uri fără sunet."]],
+  ["v3.5", "20.11.2026", ["Sincronizare între dispozitive prin cont (email + parolă)."]]
+];
+function renderNews() {
+  const box = byId("newsList"); if (!box || box.childElementCount) return;
+  CHANGELOG.forEach(([v, d, items]) => box.append(el("div", { class: "news" }, [
+    el("b", { text: `${v} · ${d}` }), el("ul", {}, items.map(t => el("li", { text: t })))
+  ])));
+}
+function helpFilter() {
+  const q = normEq(byId("helpSearch").value.trim()).split(/\s+/).filter(Boolean);
+  const sec = byId("v-help");
+  const lis = [...sec.querySelectorAll("li")];
+  lis.forEach(li => li.classList.toggle("hHide", q.length > 0 && !q.every(w => normEq(li.textContent).includes(w))));
+  sec.querySelectorAll(".news").forEach(n => n.classList.toggle("hHide", q.length > 0 && !n.querySelector("li:not(.hHide)")));
+  // titlurile (h3) rămân doar dacă au sub ele ceva vizibil
+  sec.querySelectorAll("h3").forEach(h => {
+    let n = h.nextElementSibling, any = false;
+    while (n && n.tagName !== "H3") { if (n.querySelector && n.querySelector("li:not(.hHide)")) any = true; n = n.nextElementSibling; }
+    h.classList.toggle("hHide", q.length > 0 && !any);
+  });
+  byId("helpNone").hidden = !(q.length > 0 && !lis.some(li => !li.classList.contains("hHide")));
+}
+
+// ====================================================================
 //  Backup și restaurare
 // ====================================================================
 function backupJson() { return JSON.stringify(backupObj(), null, 1); }
@@ -3057,7 +3275,6 @@ else {
   tb.addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveText("auto"); } });
   setStatus("");
   pcBarRender();
-  syncBoot = () => syncEnsure(); // pe PC încărcăm mereu sincronizarea (ca să apară formularul de conectare)
 }
 migrateReminders();
 archiveExpired();
@@ -3068,6 +3285,7 @@ autoRestore();
 syncNative();
 remTick();
 setInterval(remTick, 1000);
+applyUi();
 syncBoot();
 setTimeout(() => updCheck(false), 5000);
 setInterval(() => updCheck(false), 31 * 60000);
