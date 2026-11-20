@@ -111,8 +111,10 @@ jobs:
           touch site/.nojekyll
           # pachetul pentru telefoane = aceeasi pagina (index.html + firebase), cu numele build-ului
           (cd site && zip -qr "update/bundle-$GITHUB_RUN_NUMBER.zip" index.html firebase)
+          # pluginul de update cere amprenta SHA-256 a pachetului (verifica sa nu fie stricat la descarcare)
+          SUM=$(sha256sum "site/update/bundle-$GITHUB_RUN_NUMBER.zip" | cut -d' ' -f1)
           cat > site/update/version.json <<EOF
-          {"version": $GITHUB_RUN_NUMBER, "native": "$NATIVE", "url": "${PAGES}update/bundle-$GITHUB_RUN_NUMBER.zip", "apk": "https://github.com/${{ github.repository }}/releases/latest/download/app-debug.apk"}
+          {"version": $GITHUB_RUN_NUMBER, "native": "$NATIVE", "url": "${PAGES}update/bundle-$GITHUB_RUN_NUMBER.zip", "checksum": "$SUM", "apk": "https://github.com/${{ github.repository }}/releases/latest/download/app-debug.apk"}
           EOF
           cat site/update/version.json
       - uses: actions/configure-pages@v5
