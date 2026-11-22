@@ -153,6 +153,8 @@ body.pc .app{max-width:900px}
 
   <!-- PC: cerere pentru notificările Windows (dispare după ce sunt permise) -->
   <div id="pcBar" class="pcOnly"></div>
+  <!-- anunțul de versiune nouă (rămâne până îl aplici) -->
+  <div id="updBar"></div>
 
   <!-- DICTARE: rămâne mereu sus -->
   <div class="card" id="recCard">
@@ -302,8 +304,36 @@ body.pc .app{max-width:900px}
         <button class="doneBtn" onclick="pcNotifAsk()">🔔 Permite notificările Windows</button>
         <button onclick="testAlarm()">🧪 Test pop-up (peste 10 secunde)</button>
         <p id="pcNotifInfo" class="calHint"></p>
-        <label class="chk"><input type="checkbox" id="gcPcNotif" onchange="localStorage.setItem('gcPcNotif', this.checked ? '1' : '0')" /> 🗓️ Notificări și pentru evenimentele aduse din Google Calendar (la ora lor de început)</label>
       </div>
+      <b class="sub">🗓️ Evenimentele aduse din Google Calendar</b>
+      <label class="lbl" for="gaMode">Cum te anunță (pe acest dispozitiv)</label>
+      <select id="gaMode" onchange="gaChanged()">
+        <option value="none">🚫 Nu anunța (le văd doar în Calendar)</option>
+        <option value="silent">🔕 Doar iconiță în bara de sus, fără sunet</option>
+        <option value="memo" class="nativeOnly">🔔 Memento (notificare cu sunet)</option>
+        <option value="alarm" class="nativeOnly">⏰ Alarmă (sună ca alarmele)</option>
+      </select>
+      <label class="lbl" for="gaBefore">Când</label>
+      <select id="gaBefore" onchange="gaChanged()">
+        <option value="0">La ora evenimentului</option>
+        <option value="5">Cu 5 minute înainte</option>
+        <option value="10">Cu 10 minute înainte</option>
+        <option value="15">Cu 15 minute înainte</option>
+        <option value="30">Cu 30 de minute înainte</option>
+        <option value="60">Cu o oră înainte</option>
+        <option value="120">Cu 2 ore înainte</option>
+        <option value="1440">Cu o zi înainte</option>
+      </select>
+      <label class="lbl" for="gaAllDay">Evenimentele de toată ziua (ex. zile de naștere)</label>
+      <select id="gaAllDay" onchange="gaChanged()">
+        <option value="">Nu le anunța</option>
+        <option value="08:00">în ziua lor, la 08:00</option>
+        <option value="09:00">în ziua lor, la 09:00</option>
+        <option value="10:00">în ziua lor, la 10:00</option>
+        <option value="-18:00">cu o zi înainte, la 18:00</option>
+        <option value="-20:00">cu o zi înainte, la 20:00</option>
+      </select>
+      <p id="gaInfo" class="calHint"></p>
       <label class="lbl" for="defTime">Ora folosită când nu spui ora (ex. „vineri alarmă …”)</label>
       <input id="defTime" type="time" onchange="defTimeChanged()" />
       <div class="nativeOnly">
@@ -326,6 +356,13 @@ body.pc .app{max-width:900px}
       <select id="gcExpCal" onchange="gcOpt('cal')"></select>
       <label class="chk"><input type="checkbox" id="gcImp" onchange="gcOpt('imp')" /> 📥 <b>Google Calendar → Planner</b>: arată evenimentele în 📅 Calendar (și pe PC, cu notificări)</label>
       <div id="gcImpCals" class="vis"></div>
+      <label class="lbl" for="gcAhead">Cât de departe în viitor aduce (în urmă: o lună)</label>
+      <select id="gcAhead" onchange="gcOpt('ahead')">
+        <option value="3">3 luni</option>
+        <option value="6">6 luni</option>
+        <option value="12">12 luni</option>
+        <option value="24">24 de luni</option>
+      </select>
       <label class="lbl" for="gcInt">Cât de des verifică (cât timp Planner rulează pe telefon)</label>
       <select id="gcInt" onchange="gcOpt('int')">
         <option value="15">la 15 minute</option>
@@ -335,6 +372,10 @@ body.pc .app{max-width:900px}
       </select>
       <button onclick="gcSyncNow(true)">🔄 Sincronizează acum</button>
       <p id="gcInfo" class="calHint"></p>
+      <details style="margin-top:6px"><summary class="calHint">🔎 Ce vede telefonul (dacă lipsesc evenimente)</summary>
+        <p id="gcDiag" class="calHint" style="white-space:pre-wrap"></p>
+      </details>
+      <p class="calHint">🔔 Cum te anunță Planner pentru evenimentele aduse din Google: ⚙️ Setări → 🔔 Alarme și notificări.</p>
       <p class="calHint">Ai două telefoane pe același cont Google? Bifează „Planner → Google” doar pe unul, ca să nu apară evenimentele de două ori. „Google → Planner” e de ajuns pe un singur telefon: evenimentele ajung prin cont pe toate dispozitivele.</p>
     </details>
 
@@ -439,6 +480,8 @@ body.pc .app{max-width:900px}
       <summary>🔄 Actualizări</summary>
       <p class="calHint nativeOnly">Aplicația caută singură versiuni noi la pornire. Cele mai multe se descarcă singure (fără APK) și se aplică după ce închizi și redeschizi aplicația. Doar când se schimbă partea de Android îți cere să instalezi un APK nou, cu un singur buton. Datele rămân în ambele cazuri.</p>
       <p class="calHint pcOnly">Pe calculator ai mereu ultima versiune: dacă apare una nouă cât timp pagina e deschisă, îți spune să reîncarci pagina.</p>
+      <label class="chk"><input type="checkbox" id="updAutoCb" onchange="localStorage.setItem('updAuto', this.checked ? '1' : '0')" /> Aplică singur versiunea nouă când deschid aplicația (dacă nu scriu sau dictez nimic)</label>
+      <p class="calHint">Caută versiuni noi la fiecare deschidere sau revenire în aplicație și la 10 minute cât e deschisă. Anunțul apare într-o bandă sus și rămâne acolo până o aplici.</p>
       <button onclick="updCheck(true)">🔍 Caută update acum</button>
       <p id="updInfo" class="calHint"></p>
     </details>
@@ -556,6 +599,8 @@ body.pc .app{max-width:900px}
       <li>Debifezi o opțiune → ce a fost trimis / adus dispare automat (din Google, respectiv din Planner). Bifezi din nou → apare iar.</li>
       <li>Telefonul verifică la intervalul ales (15 min – 2 ore) cât timp Planner rulează, la fiecare deschidere și când apeși „Sincronizează acum”. Evenimentele aduse ajung prin cont și pe PC, unde primești notificare Windows la ora lor.</li>
       <li>În 📅 Calendar alegi sus: Toate / 📝 Planner / 🗓️ Google, ca să vezi pe rând ce vine de unde.</li>
+      <li><b>Atenționări pentru evenimentele Google</b>: ⚙️ Setări → 🔔 Alarme și notificări → „Evenimentele aduse din Google Calendar”: nu anunța / doar iconiță / memento / alarmă, la ora evenimentului sau cu 5 min – o zi înainte; cele de toată ziua la ora aleasă.</li>
+      <li>Lipsesc evenimente? ⚙️ Setări → 📅 Google Calendar → „🔎 Ce vede telefonul” arată câte a găsit pe fiecare lună și calendar; verifică și ce calendare sunt bifate și „Cât de departe în viitor”.</li>
       <li>Două telefoane pe același cont Google: bifează „Planner → Google” doar pe unul.</li>
     </ul>
 
@@ -977,7 +1022,7 @@ function flash(text, cls, kids) {
 // ---------- stocare ----------
 const arr = v => (Array.isArray(v) ? v : []);
 function lsGet(k, def) { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? def : v; } catch (e) { return def; } }
-function lsSet(k, v) { localStorage.setItem(k, JSON.stringify(v)); scheduleMirror(); syncTouched(); if (k === "reminders" || k === "remHistory") gcTouched(); }
+function lsSet(k, v) { localStorage.setItem(k, JSON.stringify(v)); scheduleMirror(); syncTouched(); if (k === "reminders" || k === "remHistory") gcTouched(); if (k === "gcal") gaTouched(); }
 function lsSetRaw(k, v) { localStorage.setItem(k, v); scheduleMirror(); }
 const tasksGet = () => arr(lsGet("tasks", [])), tasksSet = l => lsSet("tasks", l);
 const histGet = () => arr(lsGet("history", [])), histSet = l => lsSet("history", l);
@@ -2598,10 +2643,14 @@ function renderSettings() {
   byId("alarmsHere").value = alarmsHere();
   byId("dictMax").value = String(dictMaxMin()); byId("dictSil").value = String(dictSilSec());
   renderVis();
-  if (isNative) gcRenderCals(); else { bkRender(); byId("gcPcNotif").checked = localStorage.getItem("gcPcNotif") !== "0"; }
+  gaRender();
+  byId("updAutoCb").checked = updAuto();
+  const ulc = +localStorage.getItem("updLastCheck") || 0;
+  if (ulc && !byId("updInfo").textContent) updMsg("Ultima verificare: " + new Date(ulc).toLocaleString("ro-RO"));
+  if (isNative) gcRenderCals(); else bkRender();
   syncRender(); syncEnsure();
 }
-const APP_VER = "v4.4 · 22.11.2026";
+const APP_VER = "v4.6 · 22.11.2026";
 async function sndChanged() {
   lsSetRaw("sndAlarm", byId("sndAlarm").value);
   lsSetRaw("sndLen", byId("sndLen").value);
@@ -2911,6 +2960,7 @@ async function alarmsHereChanged() {
     info.textContent = "⏳ Aplic…";
     for (const r of remGet()) { if (!r.test) await cancelNative(r); }
     await syncNative();
+    await gaSchedule(); // și atenționările pentru evenimentele Google
   }
   info.textContent = { all: "✅ Pe acest dispozitiv sună alarmele și memento-urile.",
     memo: "✅ Memento-urile sună; alarmele apar fără sunet, doar ca iconiță în bara de sus.",
@@ -3202,38 +3252,57 @@ async function updNative() {
   try { const c = await U.current(); const p = String(c.native || "").split("."); if (p.length > 1 && p[1]) return p[1]; } catch (e) {}
   return NATIVE_HASH;
 }
+// Verificare: la pornire, la fiecare revenire în aplicație (cel mult o dată la 2 minute) și la 10 minute cât e deschisă.
+// Anunțul stă într-o bandă sus (#updBar) până îl aplici – nu mai e acoperit de alte mesaje.
+// La deschiderea aplicației, dacă nu scrii / dictezi nimic, versiunea nouă se aplică singură (setare: updAuto).
+let updOpenAt = Date.now(); // momentul deschiderii / revenirii în aplicație
+function updAuto() { return localStorage.getItem("updAuto") !== "0"; }
+function updBar(text, cls, btn) {
+  const bar = byId("updBar"); if (!bar) return;
+  bar.replaceChildren(el("div", { class: "item " + cls, style: "margin:0 0 12px" }, [el("div", { text }), btn || ""]));
+}
+const updIdle = () => Date.now() - updOpenAt < 45000 && !byId("textBox").value.trim() && !nListening && !webRec;
 async function updCheck(manual) {
   if (!isBuilt(PAGES_URL)) { if (manual) updMsg("Versiune de test: actualizările merg doar în versiunea construită pe GitHub."); return; }
   if (updBusy) return;
-  if (!manual && Date.now() - updLast < 30 * 60000) return;
+  if (!manual && Date.now() - updLast < 2 * 60000) return;
   updBusy = true; updLast = Date.now();
   try {
     if (manual) updMsg("⏳ Caut…");
     const r = await fetch(PAGES_URL + "update/version.json?t=" + Date.now(), { cache: "no-store" });
     if (!r.ok) throw new Error("serverul a răspuns " + r.status);
     const v = await r.json(), nv = +v.version || 0;
-    if (nv <= myBuild()) { if (manual) updMsg(`✅ Ai ultima versiune (build ${myBuild()}).`); return; }
+    localStorage.setItem("updLastCheck", String(Date.now()));
+    if (nv <= myBuild()) { byId("updBar").replaceChildren(); if (manual) updMsg(`✅ Ai ultima versiune (build ${myBuild()}).`); return; }
     if (!isNative) {
-      flash(`🔄 Există o versiune nouă a Secretarei (build ${nv}).`, "okbox", [el("button", { class: "doneBtn", text: "🔄 Reîncarcă pagina", onclick: () => location.reload() })]);
+      // pagina veche din memoria browserului: o reîncărcăm singuri o dată, la deschidere
+      if (updAuto() && updIdle() && sessionStorage.getItem("updReload") !== String(nv)) { sessionStorage.setItem("updReload", String(nv)); location.reload(); return; }
+      updBar(`🔄 Există o versiune nouă (build ${nv}).`, "okbox", el("button", { class: "doneBtn", text: "🔄 Reîncarcă pagina", onclick: () => location.reload() }));
       updMsg(`Versiune nouă: build ${nv}. Reîncarcă pagina.`);
       return;
     }
     const U = updPlugin(), native = await updNative();
     if (!U || v.native !== native) { // s-a schimbat partea de Android: e nevoie de APK
-      flash(`📲 Versiune nouă a aplicației (build ${nv}). De data asta trebuie instalat APK-ul: apasă butonul, apoi deschide fișierul descărcat → Install. Datele rămân.`, "warnbox",
-        [el("button", { class: "doneBtn", text: "📲 Descarcă APK-ul nou", onclick: () => { location.href = v.apk; } })]);
+      updBar(`📲 Versiune nouă a aplicației (build ${nv}). De data asta trebuie instalat APK-ul: apasă butonul, apoi deschide fișierul descărcat → Install. Datele rămân.`, "warnbox",
+        el("button", { class: "doneBtn", text: "📲 Descarcă APK-ul nou", onclick: () => { location.href = v.apk; } }));
       updMsg(`Versiune nouă: build ${nv} (cu APK).`);
       return;
     }
     let b = null; // pachetul se descarcă o singură dată
     try { const l = await U.list(); b = (l.bundles || []).find(x => x.version === String(nv) && x.status !== "error") || null; } catch (e) {}
-    if (!b) { if (manual) updMsg(`⏳ Descarc build ${nv}…`); b = await U.download({ url: v.url, version: String(nv), checksum: v.checksum || "" }); }
+    if (!b) {
+      if (manual) updMsg(`⏳ Descarc build ${nv}…`);
+      updBar(`⬇️ Descarc versiunea nouă (build ${nv})…`, "okbox");
+      b = await U.download({ url: v.url, version: String(nv), checksum: v.checksum || "" });
+    }
     await U.next({ id: b.id });
-    flash(`⬇️ Am descărcat versiunea nouă (build ${nv}). Se aplică singură după ce închizi și redeschizi aplicația, sau acum:`, "okbox",
-      [el("button", { class: "doneBtn", text: "🔄 Aplică acum", onclick: async () => { try { await U.set({ id: b.id }); } catch (e) { updMsg("⚠️ " + errMsg(e)); } } })]);
+    if (updAuto() && updIdle()) { updBar(`🔄 Aplic versiunea nouă (build ${nv})…`, "okbox"); await U.set({ id: b.id }); return; }
+    updBar(`⬇️ Versiunea nouă (build ${nv}) e descărcată. Se aplică singură la următoarea deschidere a aplicației, sau acum:`, "okbox",
+      el("button", { class: "doneBtn", text: "🔄 Aplică acum", onclick: async () => { try { await U.set({ id: b.id }); } catch (e) { updMsg("⚠️ " + errMsg(e)); } } }));
     updMsg(`Versiune nouă descărcată: build ${nv}.`);
   } catch (e) {
     if (manual) updMsg("⚠️ Nu am putut verifica: " + errMsg(e));
+    else if (byId("updBar").textContent.startsWith("⬇️ Descarc")) byId("updBar").replaceChildren();
   } finally { updBusy = false; }
 }
 
@@ -3304,15 +3373,28 @@ async function gcExport(enabled) {
   }
   return { add, mod, del };
 }
+// câte luni înainte aduce importul (setare); înapoi: 1 lună
+function gcAhead() { const v = +localStorage.getItem("gcAhead"); return [3, 6, 12, 24].includes(v) ? v : 12; }
 async function gcImport() {
   const now = Date.now(), sel = gcImpCals();
   const cals = await gcCalendars(), calName = {};
   cals.forEach(c => { calName[String(c.id)] = c.title || c.internalTitle || ""; });
-  const evs = await gcEvents(now - 30 * 86400000, now + 180 * 86400000);
-  const list = [], ids = new Set();
+  // citim lună cu lună: dacă o lună dă eroare, celelalte tot se aduc (și vedem exact ce s-a întâmplat)
+  const d0 = new Date(now); d0.setDate(1); d0.setHours(0, 0, 0, 0); d0.setMonth(d0.getMonth() - 1);
+  const evs = [], diag = [];
+  for (let i = 0; i <= gcAhead() + 1; i++) {
+    const a = new Date(d0); a.setMonth(d0.getMonth() + i);
+    const b = new Date(d0); b.setMonth(d0.getMonth() + i + 1);
+    const lab = a.toLocaleDateString("ro-RO", { month: "short", year: "2-digit" });
+    try { const r = await gcEvents(a.getTime(), b.getTime()); r.forEach(e => evs.push(e)); diag.push(`${lab}: ${r.length}`); }
+    catch (e) { diag.push(`${lab}: eroare (${errMsg(e)})`); }
+  }
+  const perCal = {}, list = [], ids = new Set();
   evs.forEach(e => {
     if (GC_TAG.test(e.description || "")) return;                         // ce a trimis Planner nu se aduce înapoi
+    const cn = calName[String(e.calendarId)] || ("#" + e.calendarId);
     if (sel && !sel.includes(String(e.calendarId))) return;                // doar calendarele bifate
+    perCal[cn] = (perCal[cn] || 0) + 1;
     const cal = calName[String(e.calendarId)] || "";
     const t = (e.title || "(fără titlu)").trim();
     const id = "g" + hashStr(cal + "|" + t + "|" + e.startDate + "|" + e.endDate);
@@ -3326,6 +3408,14 @@ async function gcImport() {
   // scriem doar dacă s-a schimbat ceva (altfel nu trimitem nimic prin cont)
   const key = l => l.map(x => JSON.stringify(x)).join("\n");
   if (key(list) !== key(gcGet())) lsSet("gcal", list);
+  // ce a văzut telefonul (în Setări → 📅 Google Calendar → „Ce vede telefonul”)
+  const fmtD = ms => new Date(ms).toLocaleDateString("ro-RO", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const diagTxt = `Pe luni (toate calendarele, înainte de filtrare): ${diag.join(" · ")}\n` +
+    `Aduse în Planner pe calendare: ${Object.entries(perCal).map(([k, v]) => `${k}: ${v}`).join(" · ") || "niciunul"}\n` +
+    (list.length ? `Primul: ${fmtD(list[0].s)} · ultimul: ${fmtD(list[list.length - 1].s)}` : "") +
+    (sel ? `\nCalendare bifate: ${sel.length} din ${cals.length}` : `\nToate cele ${cals.length} calendare`);
+  try { localStorage.setItem("gcDiag", diagTxt); } catch (e) {}
+  const dg = byId("gcDiag"); if (dg) dg.textContent = diagTxt;
   return list.length;
 }
 async function gcSyncNow(manual) {
@@ -3364,6 +3454,7 @@ async function gcOpt(what) {
   }
   if (what === "cal") localStorage.setItem("gcExpCal", byId("gcExpCal").value);
   if (what === "int") { localStorage.setItem("gcInt", byId("gcInt").value); gcStartTimer(); }
+  if (what === "ahead") localStorage.setItem("gcAhead", byId("gcAhead").value);
   if (what === "impcal") {
     const all = [...document.querySelectorAll("#gcImpCals input")];
     localStorage.setItem("gcImpCals", JSON.stringify(all.filter(c => c.checked).map(c => c.dataset.id)));
@@ -3374,7 +3465,8 @@ async function gcOpt(what) {
 async function gcRenderCals() {
   if (!isNative) return;
   byId("gcExp").checked = gcOn("gcExp"); byId("gcImp").checked = gcOn("gcImp");
-  byId("gcInt").value = String(gcIntMin());
+  byId("gcInt").value = String(gcIntMin()); byId("gcAhead").value = String(gcAhead());
+  byId("gcDiag").textContent = localStorage.getItem("gcDiag") || "Apare după prima sincronizare cu „Google Calendar → Planner” bifat.";
   const sel = byId("gcExpCal"), box = byId("gcImpCals");
   if (!GC()) { gcMsg("Funcția are nevoie de APK-ul nou (vezi 🔄 Actualizări)."); return; }
   if (!(await gcPermOk(false))) { sel.replaceChildren(el("option", { value: "", text: "(apare după ce permiți accesul la Calendar)" })); box.replaceChildren(); return; }
@@ -3398,16 +3490,95 @@ async function gcRenderCals() {
   const last = +localStorage.getItem("gcLast") || 0;
   if (last && !byId("gcInfo").textContent) gcMsg("Ultima sincronizare: " + new Date(last).toLocaleString("ro-RO"));
 }
-// PC: notificare (fără sunet) la începutul evenimentelor aduse din Google
+// ====================================================================
+//  Atenționări pentru evenimentele aduse din Google (pe fiecare dispozitiv, ⚙️ Setări → 🔔 Alarme și notificări)
+//  mod: none / silent (doar iconiță) / memo (notificare cu sunet) / alarm (sună ca alarmele); pe PC: none / silent
+//  când: la ora evenimentului sau cu X minute înainte; evenimentele de toată ziua: la o oră aleasă
+// ====================================================================
+var gaT = null;
+function gaMode() {
+  let v = localStorage.getItem("gaMode");
+  if (!["none", "silent", "memo", "alarm"].includes(v)) v = isNative ? "none" : (localStorage.getItem("gcPcNotif") === "0" ? "none" : "silent");
+  return !isNative && v !== "none" ? "silent" : v; // pe PC totul e fără sunet
+}
+function gaBefore() { const v = +localStorage.getItem("gaBefore"); return [0, 5, 10, 15, 30, 60, 120, 1440].includes(v) ? v : 0; }
+function gaAllDay() { const v = localStorage.getItem("gaAllDay"); return v == null ? "09:00" : v; }
+// combinat cu „Pe acest dispozitiv apar / sună”
+function gaEffMode() {
+  const m = gaMode(), h = alarmsHere();
+  if (m === "none" || h === "none") return "none";
+  if (h === "silent") return "silent";
+  if (h === "memo" && m === "alarm") return "silent";
+  return m;
+}
+// momentul atenționării (ms), 0 = fără
+function gaAt(g) {
+  if (g.ad) {
+    const v = gaAllDay(); if (!v) return 0;
+    const [h, m] = v.replace("-", "").split(":").map(Number), d = new Date(g.s);
+    const day = new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h, m); // ziua evenimentului de toată ziua (salvat la miezul nopții UTC)
+    if (v[0] === "-") day.setDate(day.getDate() - 1);
+    return day.getTime();
+  }
+  return g.s - gaBefore() * 60000;
+}
+function gaWhenTxt(g) {
+  if (g.ad) return "toată ziua, " + new Date(g.s).toLocaleDateString("ro-RO", { weekday: "short", day: "numeric", month: "short" });
+  const b = gaBefore();
+  return "la " + new Date(g.s).toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" }) + (b ? (b >= 1440 ? " (mâine)" : ` (peste ${b >= 60 ? b / 60 + (b === 60 ? " oră" : " ore") : b + " min"})`) : "");
+}
+function gaTouched() { if (!isNative) return; clearTimeout(gaT); gaT = setTimeout(gaSchedule, 3000); }
+const gaNid = id => -1 - (parseInt(hashStr(String(id)).slice(-7), 36) % 1000000000); // id-uri negative: nu se încurcă cu memento-urile
+// telefon: programează notificările native pentru următoarele 35 de zile (cel mult 100), anulează ce nu mai e valabil
+async function gaSchedule() {
+  const LN = P("LocalNotifications"); if (!isNative || !LN) return;
+  let st; try { st = JSON.parse(localStorage.getItem("gaSched")) || {}; } catch (e) { st = {}; }
+  const mode = gaEffMode(), now = Date.now(), want = {};
+  if (mode !== "none") gcGet().map(g => ({ g, at: gaAt(g) })).filter(x => x.at > now + 5000 && x.at < now + 35 * 86400000)
+    .sort((a, b) => a.at - b.at).slice(0, 100)
+    .forEach(({ g, at }) => { want[g.id] = { nid: gaNid(g.id), at, m: mode, t: g.t, w: gaWhenTxt(g) }; });
+  const sig = w => `${w.at}|${w.m}|${w.t}|${w.w}`;
+  const cancel = [];
+  for (const id in st) if (!want[id] || sig(want[id]) !== sig(st[id])) cancel.push({ id: st[id].nid });
+  if (cancel.length) { try { await LN.cancel({ notifications: cancel }); } catch (e) {} }
+  const add = Object.entries(want).filter(([id, w]) => !st[id] || sig(st[id]) !== sig(w));
+  if (add.length) {
+    await ensureNative();
+    const ch = mode === "silent" ? SILENT_CHANNEL : mode === "alarm" ? alarmChannel() : memoChannel();
+    await ensureChannel(ch);
+    try {
+      await LN.schedule({ notifications: add.map(([id, w]) => ({ id: w.nid, title: "🗓️ " + w.t, body: "Google Calendar · " + w.w,
+        channelId: ch.id, extra: { gid: id }, schedule: { at: new Date(w.at), allowWhileIdle: true } })) });
+    } catch (e) {}
+  }
+  try { localStorage.setItem("gaSched", JSON.stringify(want)); } catch (e) {}
+}
+function gaRender() {
+  if (!byId("gaMode")) return;
+  byId("gaMode").value = gaMode(); byId("gaBefore").value = String(gaBefore()); byId("gaAllDay").value = gaAllDay();
+}
+function gaChanged() {
+  localStorage.setItem("gaMode", byId("gaMode").value);
+  localStorage.setItem("gaBefore", byId("gaBefore").value);
+  localStorage.setItem("gaAllDay", byId("gaAllDay").value);
+  const m = gaEffMode(), n = gcGet().length;
+  byId("gaInfo").textContent = m === "none" ? "✅ Evenimentele Google nu te anunță pe acest dispozitiv." :
+    `✅ Salvat. ${({ silent: "Doar iconiță, fără sunet", memo: "Memento cu sunet", alarm: "Alarmă" })[m]}, ` +
+    (gaBefore() ? `cu ${gaBefore() >= 60 ? gaBefore() / 60 + " h" : gaBefore() + " min"} înainte` : "la ora evenimentului") + `. Evenimente aduse: ${n}.` +
+    (gaMode() !== m ? " (Atenție: „Pe acest dispozitiv apar / sună” limitează sunetul.)" : "");
+  if (isNative) gaSchedule();
+}
+// PC: notificare (fără sunet) pentru evenimentele aduse din Google, la momentul ales
 function gcPcTick() {
-  if (isNative || localStorage.getItem("gcPcNotif") === "0" || alarmsHere() === "none") return;
+  if (isNative || gaEffMode() === "none") return;
   const now = Date.now();
   let done; try { done = JSON.parse(localStorage.getItem("gcNotified")) || {}; } catch (e) { done = {}; }
   let ch = false;
   gcGet().forEach(g => {
-    if (g.ad || done[g.id] || g.s > now || now - g.s > 10 * 60000) return; // doar ce a început în ultimele 10 minute
-    done[g.id] = g.s; ch = true;
-    showToast({ id: g.id, google: true, type: "popup", text: g.t, due: g.s, loc: g.loc }, now - g.s > 60000);
+    const at = gaAt(g), k = g.id + "@" + at;
+    if (!at || done[k] || at > now || now - at > 10 * 60000) return; // doar ce a venit în ultimele 10 minute
+    done[k] = at; ch = true;
+    showToast({ id: g.id, google: true, type: "popup", text: g.t + (g.ad ? "" : " · " + gaWhenTxt(g)), due: g.s, loc: g.loc }, now - at > 60000);
   });
   if (ch) {
     for (const k in done) if (now - done[k] > 3 * 86400000) delete done[k];
@@ -3561,6 +3732,16 @@ async function wipeLocalData() {
 //  La fiecare versiune nouă se adaugă un rând SUS în CHANGELOG.
 // ====================================================================
 const CHANGELOG = [
+  ["v4.6", "22.11.2026", [
+    "Update-urile se caută la fiecare deschidere și revenire în aplicație (cel mult o dată la 2 minute) și la 10 minute cât e deschisă – înainte, o dată la 30 de minute.",
+    "Anunțul de versiune nouă stă într-o bandă sus și rămâne acolo până îl aplici (nu mai e acoperit de alte mesaje).",
+    "Dacă deschizi aplicația și nu scrii / dictezi nimic, versiunea nouă se aplică singură (se poate opri din ⚙️ Setări → 🔄 Actualizări). Pe PC, pagina veche se reîncarcă singură la deschidere."
+  ]],
+  ["v4.5", "22.11.2026", [
+    "Importul din Google citește acum lună cu lună (implicit 12 luni înainte, la alegere 3–24) și arată în ⚙️ Setări → 📅 Google Calendar → „🔎 Ce vede telefonul” câte evenimente a găsit pe fiecare lună și pe fiecare calendar.",
+    "Atenționări pentru evenimentele aduse din Google (⚙️ Setări → 🔔 Alarme și notificări): nu anunța / doar iconiță fără sunet / memento cu sunet / alarmă; la ora evenimentului sau cu 5 min – o zi înainte; evenimentele de toată ziua la o oră aleasă.",
+    "PC: aceleași setări de „când” (notificarea Windows rămâne fără sunet)."
+  ]],
   ["v4.4", "22.11.2026", [
     "📅 Google Calendar (pe telefon, ⚙️ Setări → 📅 Google Calendar), două bife separate: 📤 Planner → Google (memento-urile și alarmele apar în calendarul Google ales) și 📥 Google → Planner (evenimentele din calendarele bifate apar în 📅 Calendar).",
     "Debifezi → ce a fost trimis sau adus dispare automat; bifezi din nou → apare iar. Verificarea se face la 15 / 30 / 60 / 120 de minute (la alegere), la deschiderea aplicației și cu „Sincronizează acum”.",
@@ -3688,15 +3869,16 @@ setInterval(remTick, 1000);
 applyUi();
 syncBoot();
 // Google Calendar (telefon) / notificări Google + backup automat (PC)
-if (isNative) { gcStartTimer(); setTimeout(() => gcSyncNow(false), 6000); }
+if (isNative) { gcStartTimer(); setTimeout(() => gcSyncNow(false), 6000); setTimeout(gaSchedule, 9000); setInterval(gaSchedule, 6 * 3600000); }
 else { setInterval(gcPcTick, 30000); setTimeout(gcPcTick, 8000); setInterval(bkTick, 60000); setTimeout(bkTick, 15000); }
 document.addEventListener("visibilitychange", () => {
   if (document.hidden || !isNative) return;
   if (Date.now() - (+localStorage.getItem("gcLast") || 0) > 2 * 60000) gcSyncNow(false); // la revenirea în aplicație
+  gaTouched();
 });
-setTimeout(() => updCheck(false), 5000);
-setInterval(() => updCheck(false), 31 * 60000);
-document.addEventListener("visibilitychange", () => { if (!document.hidden) { remTick(); syncNative(); syncTouched(); updCheck(false); } });
+setTimeout(() => updCheck(false), 2500);
+setInterval(() => updCheck(false), 10 * 60000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { updOpenAt = Date.now(); remTick(); syncNative(); syncTouched(); updCheck(false); } });
 if (isNative) {
   const lb = +localStorage.getItem("lastBackup") || 0;
   if ((remGet().length || tasksGet().length) && Date.now() - lb > 7 * 86400000)
