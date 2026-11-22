@@ -17,6 +17,9 @@ perms = [
     '<uses-permission android:name="android.permission.VIBRATE" />',
     '<uses-permission android:name="android.permission.WAKE_LOCK" />',
     '<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />',
+    # Google Calendar prin calendarul telefonului (pluginul @ebarooni/capacitor-calendar)
+    '<uses-permission android:name="android.permission.READ_CALENDAR" />',
+    '<uses-permission android:name="android.permission.WRITE_CALENDAR" />',
     # copia automata in Documents/Secretara pe Android 10 si mai vechi (pe 11+ nu e nevoie)
     '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />',
 ]
