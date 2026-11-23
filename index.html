@@ -125,9 +125,14 @@ body.pc .app{max-width:900px}
 .toast .big{font-size:16px;margin:6px 0;word-break:break-word}
 .toast .row button{font-size:12px;padding:7px 9px}
 @keyframes tin{from{transform:translateX(40px);opacity:0}}
+/* tragi pagina în jos (de sus) → reîmprospătare */
+#ptr{position:fixed;top:6px;left:50%;transform:translate(-50%,-80px);z-index:150;background:var(--card);border:1px solid #3a4152;border-radius:20px;padding:8px 16px;font-size:13px;color:#cfd6e4;white-space:nowrap;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.5)}
+#ptr.anim{transition:transform .2s}
+body.native #ptr{top:42px}
 </style>
 </head>
 <body>
+<div id="ptr">⬇️ Trage pentru reîmprospătare</div>
 <div class="app">
 
   <!-- ecranul de conectare: apare până la prima conectare pe acest dispozitiv -->
@@ -188,7 +193,7 @@ body.pc .app{max-width:900px}
   <section class="card view" id="v-tasks" hidden>
     <h2>📝 Sarcini de făcut</h2>
     <div class="chips" id="chips-tasks"></div>
-    <input id="searchBox" placeholder="🔎 Caută în sarcini…" />
+    <input id="searchBox" type="search" placeholder="🔎 Caută în sarcini și liste (unul sau mai multe cuvinte)…" />
     <div id="todoList"></div>
     <div class="row" id="exportRow" style="margin-top:10px;">
       <button onclick="exportCSV()">📊 Export Excel (CSV)</button>
@@ -199,7 +204,12 @@ body.pc .app{max-width:900px}
   <!-- MEMENTO-URI -->
   <section class="card view" id="v-mem" hidden>
     <h2>⏰ Memento-uri și alarme programate</h2>
+    <div class="seg" id="memRangeSeg">
+      <button data-r="7">📆 Următoarele 7 zile <span class="badge" id="mcWeek"></span></button>
+      <button data-r="all">🗂️ Toate <span class="badge" id="mcAll"></span></button>
+    </div>
     <div class="chips" id="chips-mem"></div>
+    <input id="memSearch" type="search" placeholder="🔎 Caută în memento-uri și alarme (în toate, nu doar 7 zile)…" />
     <div id="memList"></div>
     <p class="calHint" style="margin-top:12px;">Cele bifate ✔ Gata se mută în 📜 Istoric (Memento-uri / Alarme).</p>
   </section>
@@ -276,7 +286,7 @@ body.pc .app{max-width:900px}
     <p id="setInfo" class="calHint"></p>
 
     <details class="sgrp" data-g="vis">
-      <summary>👁️ Ce se vede pe ecran</summary>
+      <summary>👁️ Display ecran</summary>
       <label class="lbl" for="titleIn">Numele afișat sus în aplicație</label>
       <input id="titleIn" type="text" maxlength="30" placeholder="Secretara" onchange="uiChanged()" />
       <p class="calHint">Bifează ce vrei să apară pe ecranul acestui dispozitiv (pe celelalte rămâne cum ai ales acolo). ⚙️ Setări apare mereu.</p>
@@ -460,8 +470,19 @@ body.pc .app{max-width:900px}
       <p id="folderInfo" class="calHint"></p>
     </details>
 
+    <details class="sgrp" data-g="wa">
+      <summary>💬 Gestionare WhatsApp</summary>
+      <p class="calHint">Persoanele cărora le poți trimite mesaj pe WhatsApp din voce. Spune de exemplu: <b>„trimite-i lui Sabina pe WhatsApp următorul mesaj: ajung în 10 minute”</b>, apoi „gata”. Planner deschide WhatsApp la conversația cu Sabina, cu mesajul deja scris: tu apeși doar <b>Trimite</b>.</p>
+      <p class="calHint">Numărul se scrie ca în agendă (ex. <b>0722 123 456</b>); pentru numere din alte țări pune prefixul (ex. <b>+49 …</b>). Lista se sincronizează pe toate dispozitivele contului.</p>
+      <div id="waList"></div>
+      <button class="doneBtn" onclick="waAdd()">➕ Persoană nouă</button>
+      <label class="chk"><input type="checkbox" id="waAutoCb" onchange="localStorage.setItem('waAuto', this.checked ? '1' : '0')" /> Deschide WhatsApp imediat după comandă (altfel îmi arată întâi mesajul, cu buton)</label>
+      <p id="waInfo" class="calHint"></p>
+    </details>
+
     <details class="sgrp" data-g="sync">
-      <summary>☁️ Sincronizare</summary>
+      <summary>☁️ Sincronizare, actualizări și backup</summary>
+      <b class="sub" style="margin-top:4px">☁️ Sincronizare</b>
       <p class="calHint">Sarcinile, listele, memento-urile, istoricul, dicționarul și subfolderele se sincronizează automat pe toate dispozitivele conectate cu același cont. Merge și fără internet: modificările se trimit când revine conexiunea. Setările (sunete, voce, ora implicită) rămân separate pe fiecare dispozitiv.</p>
       <div id="syncOut">
         <input id="syncEmail" type="email" placeholder="Email" autocomplete="username" />
@@ -474,20 +495,16 @@ body.pc .app{max-width:900px}
         <button onclick="syncLogout()">🚪 Deconectează</button>
       </div>
       <p id="syncInfo" class="calHint"></p>
-    </details>
 
-    <details class="sgrp" data-g="upd">
-      <summary>🔄 Actualizări</summary>
+      <b class="sub">🔄 Actualizări</b>
       <p class="calHint nativeOnly">Aplicația caută singură versiuni noi la pornire. Cele mai multe se descarcă singure (fără APK) și se aplică după ce închizi și redeschizi aplicația. Doar când se schimbă partea de Android îți cere să instalezi un APK nou, cu un singur buton. Datele rămân în ambele cazuri.</p>
       <p class="calHint pcOnly">Pe calculator ai mereu ultima versiune: dacă apare una nouă cât timp pagina e deschisă, îți spune să reîncarci pagina.</p>
       <label class="chk"><input type="checkbox" id="updAutoCb" onchange="localStorage.setItem('updAuto', this.checked ? '1' : '0')" /> Aplică singur versiunea nouă când deschid aplicația (dacă nu scriu sau dictez nimic)</label>
       <p class="calHint">Caută versiuni noi la fiecare deschidere sau revenire în aplicație și la 10 minute cât e deschisă. Anunțul apare într-o bandă sus și rămâne acolo până o aplici.</p>
       <button onclick="updCheck(true)">🔍 Caută update acum</button>
       <p id="updInfo" class="calHint"></p>
-    </details>
 
-    <details class="sgrp" data-g="bk">
-      <summary>💾 Backup</summary>
+      <b class="sub">💾 Backup</b>
       <p class="calHint">Creează un fișier cu toate datele (sarcini, memento-uri, istoric, dicționar, setări) și îl trimiți în Drive, e-mail sau WhatsApp. Îl poți restaura după reinstalare.</p>
       <p class="calHint nativeOnly">🛟 În plus, aplicația salvează automat o copie la fiecare modificare (în memoria aplicației și în <b>Documents/Secretara/secretara-autobackup.json</b>). Dacă după un update datele lipsesc, sunt restaurate automat la pornire.</p>
       <p id="autoBkInfo" class="calHint"></p>
@@ -606,7 +623,7 @@ body.pc .app{max-width:900px}
 
     <h3>💻 Calculator</h3>
     <ul>
-      <li><b>Backup automat în Drive</b>: ⚙️ Setări → 💾 Backup → 📂 Alege folderul (ex. G:\My Drive\Secretara\Backup) și cât de des. Dacă după o repornire apare banda „💾 Backup-ul automat … așteaptă permisiunea”, apasă o dată „Permite backup-ul”.</li>
+      <li><b>Backup automat în Drive</b>: ⚙️ Setări → ☁️ Sincronizare, actualizări și backup → 💾 Backup → 📂 Alege folderul (ex. G:\My Drive\Secretara\Backup) și cât de des. Dacă după o repornire apare banda „💾 Backup-ul automat … așteaptă permisiunea”, apasă o dată „Permite backup-ul”.</li>
       <li>Scrii textul (ex. „mâine la ora 12:00 alarmă plată factură”) și apeși <b>Ctrl+Enter</b>.</li>
       <li>Notificările apar în dreapta jos doar dacă le-ai permis (banda galbenă de sus) și Secretara e deschisă (poate fi minimizată).</li>
       <li><b>Instalează ca aplicație</b>: în Edge meniul ⋯ → Apps → Install this site as an app; în Chrome meniul ⋮ → Cast, save and share → Install page as app.</li>
@@ -1035,7 +1052,7 @@ let idSeq = 0;
 const uid = () => Date.now() * 10 + (idSeq++ % 10);
 
 // ---------- copie automată în fișier: protejează datele la update / ștergerea memoriei WebView ----------
-const DATA_KEYS = ["tasks", "history", "reminders", "remHistory", "dict", "terms", "folders", "gcal"];
+const DATA_KEYS = ["tasks", "history", "reminders", "remHistory", "dict", "terms", "folders", "gcal", "waContacts"];
 const SETTING_KEYS = ["snap", "tts", "sndAlarm", "sndLen", "sndMemo", "confMode", "defTime", "histSub", "lastBackup", "ttsEngine", "ttsRate"];
 const MIRROR_FILES = [["secretara-date.json", "DATA"], ["Secretara/secretara-autobackup.json", "DOCUMENTS"]];
 // „proaspăt” = WebView-ul nu are nimic salvat (prima pornire sau date pierdute) → încercăm restaurarea automată
@@ -1236,6 +1253,44 @@ function renderBadges() {
   byId("bMem").textContent = remGet().filter(r => !r.done).length || "";
 }
 function refresh() { renderBadges(); renderView(curView); }
+// ---------- tragi pagina în jos (când ești sus de tot) → reîmprospătare ----------
+// Sincronizează cu contul, cu Google Calendar (dacă e bifat), caută update și redesenează lista.
+let ptrBusy = false;
+(function ptrSetup() {
+  const box = byId("ptr"), TH = 85;
+  let y0 = null, x0 = 0, dy = 0;
+  const show = (y, t) => { box.style.transform = `translate(-50%,${y}px)`; if (t) box.textContent = t; };
+  const hide = () => { box.classList.add("anim"); box.style.transform = ""; setTimeout(() => box.classList.remove("anim"), 250); };
+  document.addEventListener("touchstart", e => {
+    y0 = null;
+    if (ptrBusy || e.touches.length !== 1 || window.scrollY > 0) return;
+    if (e.target.closest && e.target.closest("textarea,select,#remAlert,#gate,#toasts")) return;
+    y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; dy = 0;
+  }, { passive: true });
+  document.addEventListener("touchmove", e => {
+    if (y0 == null) return;
+    dy = e.touches[0].clientY - y0;
+    if (dy <= 0 || window.scrollY > 0 || Math.abs(e.touches[0].clientX - x0) > dy) { box.style.transform = ""; return; }
+    show(Math.min(dy, 150) * 0.5 - 20, dy > TH ? "🔄 Eliberează pentru reîmprospătare" : "⬇️ Trage pentru reîmprospătare");
+  }, { passive: true });
+  document.addEventListener("touchend", () => {
+    if (y0 == null) return;
+    y0 = null;
+    if (dy > TH && window.scrollY <= 0) ptrRun(); else hide();
+  });
+  window.ptrRun = async function () {
+    if (ptrBusy) return; ptrBusy = true;
+    box.classList.add("anim"); show(20, "⏳ Reîmprospătez…");
+    try { syncNow(); } catch (e) {}
+    try { await withTimeout(Promise.resolve(gcSyncNow(false)), 8000); } catch (e) {}
+    try { updLast = 0; updCheck(false); } catch (e) {}
+    try { archiveExpired(); } catch (e) {}
+    refresh();
+    if (navigator.vibrate) navigator.vibrate(20);
+    show(20, "✅ Reîmprospătat");
+    setTimeout(() => { hide(); ptrBusy = false; }, 900);
+  };
+})();
 document.querySelectorAll("#tabs button").forEach(b => b.addEventListener("click", () => openView(b.dataset.v)));
 
 // ====================================================================
@@ -1350,13 +1405,16 @@ function taskItem(t) {
     ]));
   return box;
 }
+// căutare după unul sau mai multe cuvinte (fără diacritice, în orice ordine; trebuie să apară toate)
+const searchWords = q => normEq(String(q || "").trim()).split(/\s+/).filter(Boolean);
+const wordsMatch = (words, text) => { if (!words.length) return true; const n = normEq(String(text || "")); return words.every(w => n.includes(w)); };
 function renderTasks() {
-  const f = normEq(byId("searchBox").value.trim());
+  const f = searchWords(byId("searchBox").value);
   const list = byId("todoList"); list.replaceChildren();
   const every = tasksSorted();
   renderChips("tasks", "tasks", every);
   const all = every.filter(t => inFolder(t, "tasks"));
-  const shown = f ? all.filter(t => normEq(String(t.text) + " " + (t.list || []).map(x => x.t).join(" ")).includes(f)) : all;
+  const shown = f.length ? all.filter(t => wordsMatch(f, String(t.text) + " " + (t.list || []).map(x => x.t).join(" "))) : all;
   if (!all.length) list.append(hint("Nicio sarcină. Dictează ceva și apasă „📝 Ca sarcină”."));
   else if (!shown.length) list.append(hint("Nimic găsit."));
   shown.forEach(t => list.append(taskItem(t)));
@@ -1466,8 +1524,8 @@ function renderHist() {
   byId("hcMem").textContent = rh.filter(h => h.type !== "alarm").length || "";
   byId("hcAl").textContent = rh.filter(h => h.type === "alarm").length || "";
   document.querySelectorAll("#histSeg button").forEach(b => b.classList.toggle("on", b.dataset.h === histSub));
-  const f = normEq(byId("histSearch").value.trim());
-  const match = t => !f || normEq(String(t)).includes(f);
+  const fw = searchWords(byId("histSearch").value), f = fw.length;
+  const match = t => wordsMatch(fw, t);
   const subItems = histSub === "tasks" ? th : rh.filter(h => (h.type === "alarm" ? "alarm" : "popup") === histSub);
   renderChips("hist", histSub === "tasks" ? "tasks" : "mem", subItems);
   const vis = subItems.filter(h => inFolder(h, "hist") && match(h.text));
@@ -1486,6 +1544,126 @@ function renderHist() {
   list.append(el("button", { class: "deleteBtn", text: "🧹 Golește această secțiune", onclick: histClearSub }));
 }
 
+// ====================================================================
+//  WhatsApp: lista de persoane (⚙️ Setări → 💬 Gestionare WhatsApp) + comanda vocală
+//  „trimite-i lui Sabina pe WhatsApp următorul mesaj: …” → se deschide WhatsApp la Sabina cu mesajul scris;
+//  utilizatorul apasă doar Trimite (WhatsApp nu permite trimiterea complet automată).
+// ====================================================================
+const waGet = () => arr(lsGet("waContacts", [])), waSet = l => lsSet("waContacts", l);
+function waAutoOn() { return localStorage.getItem("waAuto") !== "0"; }
+// număr pentru WhatsApp: doar cifre, cu prefixul țării (0722… → 40722…)
+function waPhone(p) {
+  let s = String(p || "").trim(), plus = s.startsWith("+");
+  s = s.replace(/\D/g, "");
+  if (!plus && s.startsWith("00")) s = s.slice(2);
+  else if (!plus && s.startsWith("0")) s = "40" + s.slice(1);
+  return s.length >= 8 ? s : "";
+}
+function renderWa() {
+  const list = byId("waList"); if (!list) return;
+  byId("waAutoCb").checked = waAutoOn();
+  list.replaceChildren();
+  const l = waGet();
+  if (!l.length) list.append(hint("Nicio persoană. Apasă „➕ Persoană nouă” și scrie numele (cum îl spui în comandă) și numărul."));
+  l.forEach(c => {
+    const name = el("input", { type: "text", placeholder: "Nume (ex. Sabina)" }); name.value = c.name || "";
+    const phone = el("input", { type: "tel", placeholder: "Telefon (ex. 0722 123 456)" }); phone.value = c.phone || "";
+    const save = () => {
+      const all = waGet(), x = all.find(y => y.id === c.id); if (!x) return;
+      x.name = name.value.trim(); x.phone = phone.value.trim(); waSet(all);
+      byId("waInfo").textContent = waPhone(x.phone) ? `✅ Salvat: ${x.name || "(fără nume)"} → +${waPhone(x.phone)}` : "⚠️ Numărul pare incomplet.";
+    };
+    [name, phone].forEach(i => i.addEventListener("change", save));
+    list.append(el("div", { class: "fcard" }, [name, phone, el("div", { class: "row" }, [
+      el("button", { text: "🧪 Test", title: "Deschide WhatsApp cu un mesaj de probă (nu se trimite singur)",
+        onclick: () => { save(); waOpen(waGet().find(y => y.id === c.id), "Test din Planner"); } }),
+      el("button", { class: "deleteBtn", text: "🗑️ Șterge", onclick: () => {
+        if (!confirm(`Ștergi pe „${c.name}” din lista WhatsApp?`)) return;
+        waSet(waGet().filter(y => y.id !== c.id)); renderWa();
+      } })
+    ])]));
+  });
+}
+function waAdd() {
+  const l = waGet(); l.push({ id: uid(), name: "", phone: "" }); waSet(l);
+  renderWa();
+  const ins = byId("waList").querySelectorAll(".fcard input");
+  if (ins.length >= 2) ins[ins.length - 2].focus();
+}
+function waOpen(c, msg) {
+  const ph = waPhone(c && c.phone);
+  if (!ph) { flash(`⚠️ ${c && c.name ? c.name : "Persoana"} nu are un număr valid. Completează-l în ⚙️ Setări → 💬 Gestionare WhatsApp.`); return false; }
+  const q = `phone=${ph}&text=${encodeURIComponent(msg || "")}`;
+  if (isNative) location.href = "whatsapp://send?" + q; // deschide direct aplicația WhatsApp
+  else window.open("https://api.whatsapp.com/send?" + q, "_blank");
+  return true;
+}
+// găsește persoana din lista WhatsApp în text (și la genitiv/dativ: „Sabinei”, „lui Andrei”)
+function waFindContact(seg) {
+  const words = normEq(seg).replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
+  let best = null, bestLen = 0;
+  waGet().forEach(c => {
+    const nw = normEq(c.name || "").replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
+    if (!nw.length) return;
+    // același cuvânt sau aceeași rădăcină („Sabina” = „Sabinei”, „Mama” = „Mamei”)
+    const cp = (a, b) => { let k = 0; while (k < a.length && k < b.length && a[k] === b[k]) k++; return k; };
+    const wm = (w, x) => w === x || (x.length >= 4 && cp(w, x) >= Math.max(3, x.length - 1) && Math.abs(w.length - x.length) <= 3);
+    for (let i = 0; i + nw.length <= words.length; i++) {
+      if (nw.every((x, j) => wm(words[i + j], x))) { const len = nw.join(" ").length; if (len > bestLen) { best = c; bestLen = len; } break; }
+    }
+    // doar un nume, dacă în listă e trecut cu nume complet („Nițu Andrei” → „lui Andrei”)
+    if (!best && nw.length > 1) { const one = nw.find(x => x.length >= 4 && words.some(w => wm(w, x))); if (one) { best = c; bestLen = one.length; } }
+  });
+  return best;
+}
+const WA_RE = /\b(?:whats\s*app|wats\s*app|whatsap|watsap|uatsap|uats\s*ap|ws\s*app)\b/;
+const WA_VERB = /\b(?:trimite|trimitei|trimiteti|scrie|scriei|transmite|transmitei|da|zi|spune)\b/;
+function waCommand(text) {
+  const n = normEq(text), m = WA_RE.exec(n);
+  if (!m) return false;
+  const head = n.slice(0, m.index);
+  if (!WA_VERB.test(head) && !/\bmesaj/.test(head)) return false;
+  // mesajul: după „whatsapp” (fără „următorul mesaj:”, „mesajul”, „textul”, „că”)
+  let start = m.index + m[0].length;
+  const rest = n.slice(start);
+  const lead = /^[\s,.:;–-]*(?:(?:si\s+)?(?:urmatorul|urmatoarul|acest|asta)\s+)?(?:mesaj(?:ul)?|text(?:ul)?)?(?:\s+urmator)?\s*(?:[:,–-]\s*)?(?:\bca\s+)?/.exec(rest);
+  start += lead ? lead[0].length : 0;
+  let msg = text.slice(start).trim();
+  // varianta „trimite-i Sabinei mesajul … pe WhatsApp”: mesajul e înainte de „whatsapp”
+  let who = head;
+  if (!msg) {
+    const mm = /\bmesaj(?:ul)?\s*(?:urmator\s*)?:?\s*/.exec(head);
+    if (mm) { msg = trimPunct(text.slice(mm.index + mm[0].length, m.index).replace(/\s+pe\s*$/i, "")); who = head.slice(0, mm.index); }
+  }
+  msg = capFirst(trimPunct(msg).replace(/\s+pe\s*$/i, ""));
+  const c = waFindContact(who);
+  if (!waGet().length) {
+    flash("💬 Lista WhatsApp e goală. Adaugă persoanele în ⚙️ Setări → 💬 Gestionare WhatsApp (nume + număr). Textul a rămas în căsuță.", "warnbox",
+      [el("button", { class: "doneBtn", text: "⚙️ Deschide lista", onclick: () => { openView("settings"); const d = document.querySelector('details[data-g="wa"]'); if (d) d.open = true; } })]);
+    return true;
+  }
+  if (!c) {
+    flash(`⚠️ Nu găsesc persoana în lista WhatsApp (${waGet().map(x => x.name).filter(Boolean).join(", ")}). Spune numele cum e trecut în ⚙️ Setări → 💬 Gestionare WhatsApp. Textul a rămas în căsuță.`);
+    speak("Nu găsesc persoana în lista WhatsApp.");
+    return true;
+  }
+  if (!msg) { flash(`⚠️ Nu am auzit mesajul pentru ${c.name}. Ex.: „trimite-i lui ${c.name} pe WhatsApp următorul mesaj: ajung în 10 minute”. Textul a rămas în căsuță.`); return true; }
+  const box = el("div", { class: "item okbox" }, [
+    el("div", { text: `💬 WhatsApp către ${c.name} (+${waPhone(c.phone)}):` }),
+    el("div", { class: "txt", style: "margin:6px 0", text: "„" + msg + "”" }),
+    el("div", { class: "row" }, [
+      el("button", { class: "doneBtn", text: "📤 Deschide WhatsApp", onclick: () => waOpen(c, msg) }),
+      el("button", { text: "✏️ Modifică", onclick: () => { byId("textBox").value = msg; byId("lastMem").replaceChildren(); byId("textBox").focus(); } }),
+      el("button", { text: "✖ Închide", onclick: () => byId("lastMem").replaceChildren() })
+    ]),
+    el("small", { text: "În WhatsApp verifici mesajul și apeși Trimite." })
+  ]);
+  byId("lastMem").replaceChildren(box);
+  clearBox(); confirmFx(false);
+  if (waAutoOn()) setTimeout(() => waOpen(c, msg), 400);
+  else speak(`Mesaj pentru ${c.name}. Apasă Deschide WhatsApp.`);
+  return true;
+}
 // ---------- trimitere și export ----------
 async function shareText(text) {
   if (isNative) {
@@ -1650,6 +1828,53 @@ async function createReminder(text, due, type, repeat, cat, extra) {
   await scheduleNative(r);
   refresh();
   return r;
+}
+// ---------- memento-uri asemănătoare: ca să nu le dublăm ----------
+// Două texte seamănă dacă au destule cuvinte comune (fără diacritice, „card” = „cardul”).
+// Avertizăm când există deja unul asemănător, programat cu cel mult DUP_DAYS zile mai devreme sau mai târziu.
+const DUP_DAYS = 7;
+const DUP_STOP = new Set(["pentru", "care", "sau", "lui", "lor", "mea", "meu", "mele", "mei", "ale", "alea", "acest", "aceasta", "asta", "acum",
+  "cand", "unde", "cum", "cat", "din", "dintre", "spre", "pana", "dupa", "inainte", "despre", "peste", "intre", "fara", "catre",
+  "memento", "alarma", "aminteste", "aminteste-mi", "pune", "seteaza", "textul", "text", "mesajul", "ora", "orele", "zile", "zi", "azi", "maine"]);
+function dupWords(t) {
+  return [...new Set(normEq(baseText(t)).replace(/[^a-z0-9 ]/g, " ").split(/\s+/)
+    .filter(w => w.length >= 3 && !DUP_STOP.has(w) && !/^\d+$/.test(w)).map(w => w.slice(0, 5)))];
+}
+function dupScore(a, b) {
+  const A = dupWords(a), B = dupWords(b);
+  if (!A.length || !B.length) return 0;
+  let m = 0;
+  A.forEach(x => { if (B.some(y => x === y || (Math.min(x.length, y.length) >= 4 && (x.startsWith(y) || y.startsWith(x))))) m++; });
+  if (m < Math.min(2, A.length, B.length)) return 0;
+  return 2 * m / (A.length + B.length);
+}
+function remSimilar(text, due) {
+  return remGet().filter(r => !r.done && !r.series && Math.abs(r.due - due) <= DUP_DAYS * 86400000 && dupScore(text, r.text) >= 0.5)
+    .sort((a, b) => Math.abs(a.due - due) - Math.abs(b.due - due));
+}
+function dupDiff(a, b) {
+  const d = Math.abs(daysBetween(a, b));
+  return d === 0 ? (Math.abs(a - b) < 3600000 ? "aceeași zi, aproape aceeași oră" : "aceeași zi") : `diferență ${d === 1 ? "o zi" : d + " zile"}`;
+}
+// arată avertizarea; onSave = salvează totuși
+function dupWarn(pairs, onSave) {
+  const kids = [];
+  pairs.forEach(([text, due, sims]) => sims.slice(0, 3).forEach(r => kids.push(el("div", { class: "txt", style: "margin-top:6px",
+    text: `${r.type === "alarm" ? "⏰" : "🔔"} ${fmtDT(r.due)} – ${r.text}  (${dupDiff(r.due, due)})` }))));
+  byId("textBox").value = byId("textBox").value || pairs.map(p => p[0]).join("; ");
+  flash(`⚠️ Ai deja ${kids.length === 1 ? "un memento asemănător" : "memento-uri asemănătoare"} în perioada aceea:`, "warnbox", [
+    ...kids,
+    el("div", { class: "row" }, [
+      el("button", { class: "doneBtn", text: "✅ Salvează totuși", onclick: () => { byId("lastMem").replaceChildren(); onSave(); } }),
+      el("button", { text: "✖ Nu salva", onclick: () => { clearBox(); byId("lastMem").replaceChildren(); } }),
+      el("button", { text: "👁️ Vezi-l", onclick: () => {
+        const r = pairs[0][2][0]; openView("mem"); byId("memSearch").value = dupWords(r.text).slice(0, 2).join(" "); renderMem();
+      } })
+    ]),
+    el("small", { text: "Textul a rămas în căsuță." })
+  ]);
+  if (navigator.vibrate) navigator.vibrate([60, 80, 60]);
+  speak("Atenție. Ai deja un memento asemănător în perioada aceea. Salvez totuși?");
 }
 // ---------- istoricul memento-urilor / alarmelor (separat de lista activă) ----------
 // hid: id fix pentru intrările făcute automat (aceeași pe toate telefoanele, ca să nu apară dublate după sincronizare)
@@ -1852,6 +2077,19 @@ function editReminder(r, box) {
       el("button", { text: "Anulează", onclick: refresh })
     ]));
 }
+// Memento: implicit doar ce urmează în 7 zile (plus ce a trecut și n-a fost bifat); restul la „Toate” sau în 📅 Calendar.
+// Căutarea caută mereu în toate.
+let memRange = localStorage.getItem("memRange") === "all" ? "all" : "7";
+document.querySelectorAll("#memRangeSeg button").forEach(b => b.addEventListener("click", () => {
+  memRange = b.dataset.r; try { localStorage.setItem("memRange", memRange); } catch (e) {} renderMem();
+}));
+byId("memSearch").addEventListener("input", () => renderMem());
+const weekEnd = () => dayStart(Date.now()) + 8 * 86400000 - 1; // azi + încă 7 zile, până la miezul nopții
+function memDayLabel(ms) {
+  const d = daysBetween(Date.now(), ms);
+  const base = new Date(ms).toLocaleDateString("ro-RO", { weekday: "long", day: "numeric", month: "long" });
+  return d < 0 ? "⚠️ Trecute (nebifate)" : d === 0 ? "Azi · " + base : d === 1 ? "Mâine · " + base : base + (d > 7 ? ` · peste ${d} zile` : "");
+}
 function renderMem() {
   const all = remGet();
   const u = byId("memList"); u.replaceChildren();
@@ -1861,9 +2099,29 @@ function renderMem() {
   // din fiecare serie zilnică arătăm doar următoarea zi (restul se văd în Calendar)
   const seen = new Set(), up = [];
   vis.forEach(r => { if (r.series) { if (seen.has(r.series)) return; seen.add(r.series); } up.push(r); });
-  if (!up.length && every.length) u.append(hint("Nimic în acest subfolder."));
-  else if (!up.length) u.append(hint("Niciun memento programat. Spune de ex.: „mâine la ora 9 pune o alarmă cu textul …” și apoi „gata”."));
-  up.forEach(r => u.append(reminderItem(r, r.series ? vis.filter(x => x.series === r.series).length : 0)));
+  const lim = weekEnd(), week = up.filter(r => r.due <= lim);
+  byId("mcWeek").textContent = week.length || "";
+  byId("mcAll").textContent = up.length || "";
+  document.querySelectorAll("#memRangeSeg button").forEach(b => b.classList.toggle("on", b.dataset.r === memRange));
+  const fw = searchWords(byId("memSearch").value);
+  let shown = fw.length ? up.filter(r => wordsMatch(fw, r.text)) : memRange === "all" ? up : week;
+  if (!shown.length) {
+    if (fw.length) u.append(hint("Nimic găsit."));
+    else if (up.length) u.append(hint(memRange === "7" ? `Nimic în următoarele 7 zile. Mai târziu: ${up.length} (apasă „🗂️ Toate” sau vezi 📅 Calendar).` : "Nimic în acest subfolder."));
+    else if (every.length) u.append(hint("Nimic în acest subfolder."));
+    else u.append(hint("Niciun memento programat. Spune de ex.: „mâine la ora 9 pune o alarmă cu textul …” și apoi „gata”."));
+    return;
+  }
+  if (fw.length) u.append(hint(`🔎 ${shown.length} găsite (din toate, nu doar 7 zile).`));
+  let lastDay = "";
+  shown.forEach(r => {
+    const k = r.due < dayStart(Date.now()) ? "past" : dkey(new Date(r.due));
+    if (k !== lastDay) { lastDay = k; u.append(el("div", { class: "dayHdr", text: memDayLabel(r.due) })); }
+    u.append(reminderItem(r, r.series ? vis.filter(x => x.series === r.series).length : 0));
+  });
+  if (!fw.length && memRange === "7" && up.length > week.length)
+    u.append(el("button", { class: "wide", style: "margin-top:12px", text: `🗂️ Mai târziu: încă ${up.length - week.length} → arată toate`,
+      onclick: () => { memRange = "all"; try { localStorage.setItem("memRange", "all"); } catch (e) {} renderMem(); } }));
 }
 function showLast(r, note) {
   const b = byId("lastMem");
@@ -2006,7 +2264,11 @@ function stripStop(t) { const m = STOPRE.exec(normEq(t)); return m ? t.slice(0, 
 const isRemP = p => (p.byKeyword && (p.type === "alarm" || p.type === "popup")) || (!p.byKeyword && p.due && p.hasTime);
 function clearBox() { byId("textBox").value = ""; }
 
-async function createMany(parts, forcedType) {
+async function createMany(parts, forcedType, force) {
+  if (!force) {
+    const pairs = parts.map(p => [p.text, p.due.getTime(), remSimilar(p.text, p.due.getTime())]).filter(x => x[2].length);
+    if (pairs.length) { dupWarn(pairs, () => createMany(parts, forcedType, true)); return; }
+  }
   const made = [];
   for (const p of parts) {
     const r = await createReminder(p.text, p.due.getTime(), forcedType || (p.type === "note" ? "popup" : p.type), p.repeat);
@@ -2035,11 +2297,15 @@ function seriesDays(p, dueMs) {
   }
   return 0;
 }
-async function createOne(p, type) {
+async function createOne(p, type, force) {
   // ex. „azi alarmă X” fără oră, după ora implicită: nu programăm în trecut
   if (!p.repeat && p.due.getTime() <= Date.now() + 5000) {
     noDate(byId("textBox").value || p.text, p, type, `⚠️ Ora rezultată (${fmtDT(p.due.getTime())}) a trecut deja. Spune și ora (ex. „azi la 17 …”) sau alege data din calendar. Textul a rămas în căsuță.`);
     return;
+  }
+  if (!force) {
+    const sims = remSimilar(p.text, p.due.getTime());
+    if (sims.length) { dupWarn([[p.text, p.due.getTime(), sims]], () => createOne(p, type, true)); return; }
   }
   const r = await createReminder(p.text, p.due.getTime(), type, p.repeat);
   clearBox();
@@ -2266,6 +2532,7 @@ function saveText(mode, raw) {
   byId("textBox").value = text;
   learnFromEdit(text);
   text = fixText(text);
+  if (waCommand(text)) return; // „trimite-i lui X pe WhatsApp …”
   if ((mode === "auto" || mode === "task") && voiceCommand(text)) return; // folder nou / listă
   if (mode === "task") { saveAsTask(text); return; }
   const parts = parseMulti(text);
@@ -2561,6 +2828,11 @@ async function addReminder() {
   if (isNaN(due)) { msg.textContent = "Data sau ora nu sunt valide."; return; }
   const repeat = byId("remRepeat").value || null;
   if (repeat && due <= Date.now()) due = nextOcc(due, repeat, Date.now());
+  const sims = remSimilar(text, due);
+  if (sims.length && !confirm("⚠️ Ai deja un memento asemănător în perioada aceea:\n\n" +
+      sims.slice(0, 3).map(r => `• ${fmtDT(r.due)} – ${r.text} (${dupDiff(r.due, due)})`).join("\n") + "\n\nSalvez totuși?")) {
+    msg.textContent = "Nu am salvat (există deja unul asemănător)."; return;
+  }
   byId("remText").value = "";
   calSel = dkey(new Date(due)); const d = new Date(due); calY = d.getFullYear(); calM = d.getMonth();
   await createReminder(text, due, byId("remType").value, repeat);
@@ -2620,6 +2892,7 @@ function dictOptChanged() {
 }
 function renderSettings() {
   renderFolders();
+  renderWa();
   byId("setInfo").textContent = isNative
     ? "Rulezi ca aplicație Android: alarmele sunt programate în telefon și sună și cu aplicația închisă."
     : "💻 Varianta de calculator: memento-urile și alarmele apar fără sunet, ca mesaje în dreapta ecranului, cât timp Secretara e deschisă.";
@@ -2650,7 +2923,7 @@ function renderSettings() {
   if (isNative) gcRenderCals(); else bkRender();
   syncRender(); syncEnsure();
 }
-const APP_VER = "v4.6 · 22.11.2026";
+const APP_VER = "v4.7 · 23.11.2026";
 async function sndChanged() {
   lsSetRaw("sndAlarm", byId("sndAlarm").value);
   lsSetRaw("sndLen", byId("sndLen").value);
@@ -3420,7 +3693,7 @@ async function gcImport() {
 }
 async function gcSyncNow(manual) {
   if (!isNative) return;
-  if (!GC()) { if (manual) gcMsg("⚠️ Funcția are nevoie de APK-ul nou: ⚙️ Setări → 🔄 Actualizări → Caută update acum → „📲 Descarcă APK-ul nou”."); return; }
+  if (!GC()) { if (manual) gcMsg("⚠️ Funcția are nevoie de APK-ul nou: ⚙️ Setări → ☁️ Sincronizare, actualizări și backup → Caută update acum → „📲 Descarcă APK-ul nou”."); return; }
   if (gcBusy) return; gcBusy = true;
   const exp = gcOn("gcExp"), imp = gcOn("gcImp"), expWas = gcOn("gcExpWas"), impWas = gcOn("gcImpWas");
   try {
@@ -3732,6 +4005,14 @@ async function wipeLocalData() {
 //  La fiecare versiune nouă se adaugă un rând SUS în CHANGELOG.
 // ====================================================================
 const CHANGELOG = [
+  ["v4.7", "23.11.2026", [
+    "⏰ Memento: arată implicit doar ce urmează în următoarele 7 zile, grupat pe zile (Azi, Mâine, …). Restul: butonul „🗂️ Toate” sau 📅 Calendar.",
+    "🔎 Bară de căutare la Memento (caută în toate, nu doar în 7 zile). La Sarcini și Istoric poți căuta acum după mai multe cuvinte, în orice ordine.",
+    "⚠️ Avertizare la memento-uri asemănătoare: dacă dictezi sau scrii un memento care seamănă cu unul existent, programat cu cel mult 7 zile mai devreme sau mai târziu, aplicația te întreabă dacă îl salvezi totuși.",
+    "🔄 Tragi pagina în jos (când ești sus de tot) → reîmprospătare: sincronizare cu contul și cu Google Calendar, caută update.",
+    "⚙️ Setări: „Ce se vede pe ecran” se numește „Display ecran”; Sincronizare, Actualizări și Backup sunt acum într-o singură secțiune.",
+    "💬 WhatsApp din voce: în ⚙️ Setări → 💬 Gestionare WhatsApp treci persoanele (nume + număr). Spui „trimite-i lui Sabina pe WhatsApp următorul mesaj: …” și se deschide WhatsApp la Sabina cu mesajul scris; tu apeși doar Trimite."
+  ]],
   ["v4.6", "22.11.2026", [
     "Update-urile se caută la fiecare deschidere și revenire în aplicație (cel mult o dată la 2 minute) și la 10 minute cât e deschisă – înainte, o dată la 30 de minute.",
     "Anunțul de versiune nouă stă într-o bandă sus și rămâne acolo până îl aplici (nu mai e acoperit de alte mesaje).",
