@@ -20,6 +20,9 @@ perms = [
     # Google Calendar prin calendarul telefonului (pluginul @ebarooni/capacitor-calendar)
     '<uses-permission android:name="android.permission.READ_CALENDAR" />',
     '<uses-permission android:name="android.permission.WRITE_CALENDAR" />',
+    # agenda telefonului pentru comenzile WhatsApp (pluginul @capacitor-community/contacts cere ambele; Planner doar citeste)
+    '<uses-permission android:name="android.permission.READ_CONTACTS" />',
+    '<uses-permission android:name="android.permission.WRITE_CONTACTS" />',
     # copia automata in Documents/Secretara pe Android 10 si mai vechi (pe 11+ nu e nevoie)
     '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />',
 ]

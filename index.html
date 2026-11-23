@@ -100,6 +100,13 @@ details.sgrp .sub{display:block;margin-top:16px;font-size:14px}
 .lfile .lhead .txt{flex:1 1 auto;margin:0;font-weight:600}
 .lcount{font-size:12px;color:var(--muted);background:#343b4d;border-radius:8px;padding:1px 7px}
 .lfile.open{outline:1px solid #3a4a6e}
+/* lista WhatsApp: un rând pe persoană */
+.waRow{display:flex;align-items:center;gap:6px;padding:7px 0;border-top:1px solid #343b4d;font-size:14px}
+.waRow:first-child{border-top:none}
+.waRow .wn{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.waRow .wn small{color:var(--muted);margin-left:6px}
+.waRow button{margin:0;padding:6px 9px}
+#waList,#waFindRes{margin-top:6px}
 #gate{position:fixed;inset:0;z-index:200;background:var(--bg);overflow:auto;padding:16px}
 #gate .gcard{max-width:420px;margin:12vh auto 0;background:var(--card);border-radius:14px;padding:20px}
 #gate h1{font-size:24px;margin:0 0 6px}
@@ -473,9 +480,15 @@ body.native #ptr{top:42px}
     <details class="sgrp" data-g="wa">
       <summary>💬 Gestionare WhatsApp</summary>
       <p class="calHint">Persoanele cărora le poți trimite mesaj pe WhatsApp din voce. Spune de exemplu: <b>„trimite-i lui Sabina pe WhatsApp următorul mesaj: ajung în 10 minute”</b>, apoi „gata”. Planner deschide WhatsApp la conversația cu Sabina, cu mesajul deja scris: tu apeși doar <b>Trimite</b>.</p>
-      <p class="calHint">Numărul se scrie ca în agendă (ex. <b>0722 123 456</b>); pentru numere din alte țări pune prefixul (ex. <b>+49 …</b>). Lista se sincronizează pe toate dispozitivele contului.</p>
+      <b class="sub nativeOnly">📒 Agenda telefonului</b>
+      <label class="chk nativeOnly"><input type="checkbox" id="waAgendaCb" onchange="waAgendaToggle(this.checked)" /> Caută persoanele și în agenda telefonului (prima dată cere permisiunea „Contacte”; Planner doar citește agenda, nu schimbă nimic în ea)</label>
+      <p id="waAgendaInfo" class="calHint nativeOnly"></p>
+      <b class="sub">✏️ Nume în Planner</b>
+      <p class="calHint">Pentru nume lungi sau greu de spus: alegi persoana din agendă și îi dai aici numele pe care îl spui tu (ex. în agendă „Sabinutza” → în Planner „Sabina”). Agenda rămâne neschimbată. Poți adăuga și numere care nu sunt în agendă.</p>
       <div id="waList"></div>
-      <button class="doneBtn" onclick="waAdd()">➕ Persoană nouă</button>
+      <input id="waFind" class="nativeOnly" type="search" placeholder="🔎 Caută în agendă ca să-i dai un nume în Planner…" oninput="waFindRender()" />
+      <div id="waFindRes"></div>
+      <button onclick="waAdd()">➕ Adaugă manual (nume + număr)</button>
       <label class="chk"><input type="checkbox" id="waAutoCb" onchange="localStorage.setItem('waAuto', this.checked ? '1' : '0')" /> Deschide WhatsApp imediat după comandă (altfel îmi arată întâi mesajul, cu buton)</label>
       <p id="waInfo" class="calHint"></p>
     </details>
@@ -1559,36 +1572,115 @@ function waPhone(p) {
   else if (!plus && s.startsWith("0")) s = "40" + s.slice(1);
   return s.length >= 8 ? s : "";
 }
+// lista din Planner: un rând pe persoană (nume + număr mic), ✏️ deschide editarea doar pentru acel rând
+let waEditId = null;
 function renderWa() {
   const list = byId("waList"); if (!list) return;
   byId("waAutoCb").checked = waAutoOn();
+  const ag = byId("waAgendaCb"); if (ag) ag.checked = waAgendaOn();
+  waAgendaInfo();
   list.replaceChildren();
-  const l = waGet();
-  if (!l.length) list.append(hint("Nicio persoană. Apasă „➕ Persoană nouă” și scrie numele (cum îl spui în comandă) și numărul."));
-  l.forEach(c => {
-    const name = el("input", { type: "text", placeholder: "Nume (ex. Sabina)" }); name.value = c.name || "";
-    const phone = el("input", { type: "tel", placeholder: "Telefon (ex. 0722 123 456)" }); phone.value = c.phone || "";
-    const save = () => {
-      const all = waGet(), x = all.find(y => y.id === c.id); if (!x) return;
-      x.name = name.value.trim(); x.phone = phone.value.trim(); waSet(all);
-      byId("waInfo").textContent = waPhone(x.phone) ? `✅ Salvat: ${x.name || "(fără nume)"} → +${waPhone(x.phone)}` : "⚠️ Numărul pare incomplet.";
-    };
-    [name, phone].forEach(i => i.addEventListener("change", save));
-    list.append(el("div", { class: "fcard" }, [name, phone, el("div", { class: "row" }, [
-      el("button", { text: "🧪 Test", title: "Deschide WhatsApp cu un mesaj de probă (nu se trimite singur)",
-        onclick: () => { save(); waOpen(waGet().find(y => y.id === c.id), "Test din Planner"); } }),
-      el("button", { class: "deleteBtn", text: "🗑️ Șterge", onclick: () => {
-        if (!confirm(`Ștergi pe „${c.name}” din lista WhatsApp?`)) return;
-        waSet(waGet().filter(y => y.id !== c.id)); renderWa();
-      } })
-    ])]));
-  });
+  const l = waGet().slice().sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ro"));
+  if (!l.length) list.append(hint(isNative ? "Niciun nume în Planner. Nu e obligatoriu: cu agenda bifată, persoanele se caută direct acolo." : "Nicio persoană. Apasă „➕ Adaugă manual” și scrie numele (cum îl spui în comandă) și numărul."));
+  l.forEach(c => list.append(c.id === waEditId ? waEditor(c) : el("div", { class: "waRow" }, [
+    el("span", { class: "wn" }, [String(c.name || "(fără nume)"), el("small", { text: (c.orig && c.orig !== c.name ? `📒 ${c.orig} · ` : "") + (waPhone(c.phone) ? "+" + waPhone(c.phone) : "⚠️ fără număr") })]),
+    el("button", { text: "✏️", title: "Editează", onclick: () => { waEditId = c.id; renderWa(); } }),
+    el("button", { class: "deleteBtn", text: "🗑️", title: "Șterge din Planner (agenda rămâne neschimbată)", onclick: () => {
+      if (!confirm(`Ștergi „${c.name}” din Planner? (agenda telefonului rămâne neschimbată)`)) return;
+      waSet(waGet().filter(y => y.id !== c.id)); renderWa();
+    } })
+  ])));
 }
-function waAdd() {
-  const l = waGet(); l.push({ id: uid(), name: "", phone: "" }); waSet(l);
-  renderWa();
-  const ins = byId("waList").querySelectorAll(".fcard input");
-  if (ins.length >= 2) ins[ins.length - 2].focus();
+function waEditor(c) {
+  const name = el("input", { type: "text", placeholder: "Numele pe care îl spui (ex. Sabina)" }); name.value = c.name || "";
+  const phone = el("input", { type: "tel", placeholder: "Telefon (ex. 0722 123 456)" }); phone.value = c.phone || "";
+  const save = close => {
+    const all = waGet(), x = all.find(y => y.id === c.id); if (!x) return null;
+    x.name = name.value.trim(); x.phone = phone.value.trim(); waSet(all);
+    byId("waInfo").textContent = waPhone(x.phone) ? `✅ Salvat: ${x.name || "(fără nume)"} → +${waPhone(x.phone)}` : "⚠️ Numărul pare incomplet.";
+    if (close) { waEditId = null; renderWa(); }
+    return x;
+  };
+  setTimeout(() => { if (!name.value) name.focus(); }, 50);
+  return el("div", { class: "fcard" }, [
+    c.orig ? el("div", { class: "calHint", text: `📒 În agendă: ${c.orig}` }) : "",
+    name, phone,
+    el("div", { class: "row" }, [
+      el("button", { class: "doneBtn", text: "💾 Salvează", onclick: () => save(true) }),
+      el("button", { text: "🧪 Test", title: "Deschide WhatsApp cu un mesaj de probă (nu se trimite singur)", onclick: () => { const x = save(false); if (x) waOpen(x, "Test din Planner"); } }),
+      el("button", { text: "Închide", onclick: () => {
+        const x = waGet().find(y => y.id === c.id);
+        if (x && !x.name && !x.phone) waSet(waGet().filter(y => y.id !== c.id)); // rând nou lăsat gol
+        waEditId = null; renderWa();
+      } })
+    ])
+  ]);
+}
+function waAdd(name, phone, orig) {
+  const l = waGet(), c = { id: uid(), name: name || "", phone: phone || "" };
+  if (orig) c.orig = orig;
+  l.push(c); waSet(l);
+  waEditId = c.id; renderWa();
+}
+// ---------- agenda telefonului (doar citire, ținută în memorie; nu se sincronizează și nu apare ca listă) ----------
+let waAgenda = null, waAgendaBusy = null;
+const CT = () => (isNative && CAP && CAP.isPluginAvailable && CAP.isPluginAvailable("Contacts") ? P("Contacts") : null);
+function waAgendaOn() { return localStorage.getItem("waAgenda") === "1"; }
+function waAgendaInfo(t) {
+  const i = byId("waAgendaInfo"); if (!i) return;
+  if (t) { i.textContent = t; return; }
+  i.textContent = !waAgendaOn() ? "Debifat: se folosesc doar numele trecute mai jos." :
+    waAgenda ? `✅ Am acces la agendă: ${waAgenda.length} persoane cu număr de telefon. Nu le afișez aici; le caut când dai o comandă.` : "⏳ Citesc agenda…";
+}
+// numărul cel mai potrivit pentru WhatsApp: întâi mobil românesc (07…), apoi primul valid
+function waBestPhone(phones) {
+  const ok = (phones || []).map(p => p && p.number).filter(n => waPhone(n));
+  return ok.find(n => /^407/.test(waPhone(n))) || ok[0] || "";
+}
+async function waAgendaLoad(ask) {
+  if (!isNative) return null;
+  if (waAgendaBusy) return waAgendaBusy;
+  waAgendaBusy = (async () => {
+    const C = CT();
+    if (!C) { waAgendaInfo("⚠️ Pentru agendă e nevoie o singură dată de APK-ul nou: ⚙️ Setări → ☁️ Sincronizare, actualizări și backup → Caută update acum → „📲 Descarcă APK-ul nou”."); return null; }
+    try {
+      let p = await C.checkPermissions();
+      if (p.contacts !== "granted" && p.contacts !== "limited") {
+        if (!ask) { waAgendaInfo("🔒 Lipsește permisiunea „Contacte”. Debifează și bifează din nou, apoi apasă „Allow”."); return null; }
+        p = await C.requestPermissions();
+      }
+      if (p.contacts !== "granted" && p.contacts !== "limited") {
+        waAgendaInfo("🚫 Permisiunea „Contacte” a fost refuzată. O poți da din: Setări → Aplicații → Planner → Permisiuni → Contacte → Permite (Settings → Apps → Planner → Permissions → Contacts → Allow).");
+        return null;
+      }
+      const r = await C.getContacts({ projection: { name: true, phones: true } });
+      waAgenda = arr(r && r.contacts).map(x => ({ name: String((x.name && (x.name.display || [x.name.given, x.name.family].filter(Boolean).join(" "))) || "").trim(), phone: waBestPhone(x.phones) }))
+        .filter(x => x.name && x.phone);
+      waAgendaInfo();
+      return waAgenda;
+    } catch (e) { waAgendaInfo("⚠️ Nu am putut citi agenda: " + errMsg(e)); return null; }
+    finally { waAgendaBusy = null; }
+  })();
+  return waAgendaBusy;
+}
+async function waAgendaToggle(on) {
+  localStorage.setItem("waAgenda", on ? "1" : "0");
+  if (!on) { waAgenda = null; waAgendaInfo(); byId("waFindRes").replaceChildren(); return; }
+  waAgendaInfo("⏳ Citesc agenda…");
+  const r = await waAgendaLoad(true);
+  if (!r) { localStorage.setItem("waAgenda", "0"); byId("waAgendaCb").checked = false; }
+}
+// caută în agendă ca să-i dai persoanei un nume în Planner (rezultatele apar doar cât scrii)
+async function waFindRender() {
+  const box = byId("waFindRes"); box.replaceChildren();
+  const q = searchWords(byId("waFind").value); if (!q.length) return;
+  if (!waAgenda) { if (!waAgendaOn()) { box.append(hint("Bifează întâi „Caută persoanele și în agenda telefonului”.")); return; } await waAgendaLoad(false); if (!waAgenda) return; }
+  const res = waAgenda.filter(x => wordsMatch(q, x.name + " " + x.phone.replace(/\D/g, ""))).slice(0, 8);
+  if (!res.length) { box.append(hint("Nimic găsit în agendă.")); return; }
+  res.forEach(x => box.append(el("div", { class: "waRow" }, [
+    el("span", { class: "wn" }, [x.name, el("small", { text: "+" + waPhone(x.phone) })]),
+    el("button", { class: "doneBtn", text: "➕ Nume în Planner", onclick: () => { byId("waFind").value = ""; box.replaceChildren(); waAdd(x.name, x.phone, x.name); } })
+  ])));
 }
 function waOpen(c, msg) {
   const ph = waPhone(c && c.phone);
@@ -1598,21 +1690,23 @@ function waOpen(c, msg) {
   else window.open("https://api.whatsapp.com/send?" + q, "_blank");
   return true;
 }
-// găsește persoana din lista WhatsApp în text (și la genitiv/dativ: „Sabinei”, „lui Andrei”)
-function waFindContact(seg) {
+// găsește persoanele din listă al căror nume apare în text (și la genitiv/dativ: „Sabinei”, „lui Andrei”).
+// Întoarce cele mai bune potriviri (mai multe doar dacă se potrivesc la fel de bine).
+function waFindContacts(seg, list) {
   const words = normEq(seg).replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
-  let best = null, bestLen = 0;
-  waGet().forEach(c => {
+  const cp = (a, b) => { let k = 0; while (k < a.length && k < b.length && a[k] === b[k]) k++; return k; };
+  // același cuvânt sau aceeași rădăcină („Sabina” = „Sabinei”, „Mama” = „Mamei”)
+  const wm = (w, x) => w === x || (x.length >= 4 && cp(w, x) >= Math.max(3, x.length - 1) && Math.abs(w.length - x.length) <= 3);
+  let best = [], bestS = 0;
+  list.forEach(c => {
     const nw = normEq(c.name || "").replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
     if (!nw.length) return;
-    // același cuvânt sau aceeași rădăcină („Sabina” = „Sabinei”, „Mama” = „Mamei”)
-    const cp = (a, b) => { let k = 0; while (k < a.length && k < b.length && a[k] === b[k]) k++; return k; };
-    const wm = (w, x) => w === x || (x.length >= 4 && cp(w, x) >= Math.max(3, x.length - 1) && Math.abs(w.length - x.length) <= 3);
-    for (let i = 0; i + nw.length <= words.length; i++) {
-      if (nw.every((x, j) => wm(words[i + j], x))) { const len = nw.join(" ").length; if (len > bestLen) { best = c; bestLen = len; } break; }
-    }
-    // doar un nume, dacă în listă e trecut cu nume complet („Nițu Andrei” → „lui Andrei”)
-    if (!best && nw.length > 1) { const one = nw.find(x => x.length >= 4 && words.some(w => wm(w, x))); if (one) { best = c; bestLen = one.length; } }
+    let s = 0;
+    for (let i = 0; i + nw.length <= words.length; i++) if (nw.every((x, j) => wm(words[i + j], x))) { s = 100 + nw.join(" ").length; break; }
+    // doar un nume, dacă e trecut cu nume complet („Nițu Andrei” → „lui Andrei”)
+    if (!s && nw.length > 1) { const one = nw.filter(x => x.length >= 3 && words.some(w => wm(w, x))); if (one.length) s = one.join(" ").length; }
+    if (!s) return;
+    if (s > bestS) { bestS = s; best = [c]; } else if (s === bestS && !best.some(b => waPhone(b.phone) === waPhone(c.phone))) best.push(c);
   });
   return best;
 }
@@ -1636,18 +1730,35 @@ function waCommand(text) {
     if (mm) { msg = trimPunct(text.slice(mm.index + mm[0].length, m.index).replace(/\s+pe\s*$/i, "")); who = head.slice(0, mm.index); }
   }
   msg = capFirst(trimPunct(msg).replace(/\s+pe\s*$/i, ""));
-  const c = waFindContact(who);
-  if (!waGet().length) {
-    flash("💬 Lista WhatsApp e goală. Adaugă persoanele în ⚙️ Setări → 💬 Gestionare WhatsApp (nume + număr). Textul a rămas în căsuță.", "warnbox",
-      [el("button", { class: "doneBtn", text: "⚙️ Deschide lista", onclick: () => { openView("settings"); const d = document.querySelector('details[data-g="wa"]'); if (d) d.open = true; } })]);
-    return true;
+  waResolve(who, msg);
+  return true;
+}
+// întâi numele din Planner, apoi agenda telefonului (dacă e bifată)
+async function waResolve(who, msg) {
+  let found = waFindContacts(who, waGet());
+  if (!found.length && isNative && waAgendaOn()) {
+    if (!waAgenda) await waAgendaLoad(false);
+    if (waAgenda) found = waFindContacts(who, waAgenda);
   }
-  if (!c) {
-    flash(`⚠️ Nu găsesc persoana în lista WhatsApp (${waGet().map(x => x.name).filter(Boolean).join(", ")}). Spune numele cum e trecut în ⚙️ Setări → 💬 Gestionare WhatsApp. Textul a rămas în căsuță.`);
-    speak("Nu găsesc persoana în lista WhatsApp.");
-    return true;
+  const goSettings = el("button", { text: "⚙️ Gestionare WhatsApp", onclick: () => { openView("settings"); const d = document.querySelector('details[data-g="wa"]'); if (d) d.open = true; } });
+  if (!found.length) {
+    flash(`⚠️ Nu găsesc persoana ${waAgendaOn() ? "nici în Planner, nici în agendă" : "în lista WhatsApp"}. Pentru nume greu de spus, dă-i un nume în Planner: ⚙️ Setări → 💬 Gestionare WhatsApp. Textul a rămas în căsuță.`, "warnbox", [goSettings]);
+    speak("Nu găsesc persoana.");
+    return;
   }
-  if (!msg) { flash(`⚠️ Nu am auzit mesajul pentru ${c.name}. Ex.: „trimite-i lui ${c.name} pe WhatsApp următorul mesaj: ajung în 10 minute”. Textul a rămas în căsuță.`); return true; }
+  if (!msg) { flash(`⚠️ Nu am auzit mesajul pentru ${found[0].name}. Ex.: „trimite-i lui ${found[0].name} pe WhatsApp următorul mesaj: ajung în 10 minute”. Textul a rămas în căsuță.`); return; }
+  if (found.length > 1) {
+    // mai multe persoane cu același nume: alegi tu
+    flash(`👥 Am găsit ${found.length} persoane. Cui trimit „${msg}”?`, "warnbox", [
+      ...found.slice(0, 6).map(c => el("button", { class: "doneBtn", text: `${c.name} · +${waPhone(c.phone)}`, onclick: () => waReady(c, msg, true) })),
+      el("small", { style: "display:block;margin-top:6px", text: "Ca să nu mai întreb: dă-le nume diferite în ⚙️ Setări → 💬 Gestionare WhatsApp." })
+    ]);
+    speak(`Am găsit ${found.length} persoane. Alege pe ecran.`);
+    return;
+  }
+  waReady(found[0], msg, waAutoOn());
+}
+function waReady(c, msg, open) {
   const box = el("div", { class: "item okbox" }, [
     el("div", { text: `💬 WhatsApp către ${c.name} (+${waPhone(c.phone)}):` }),
     el("div", { class: "txt", style: "margin:6px 0", text: "„" + msg + "”" }),
@@ -1660,9 +1771,8 @@ function waCommand(text) {
   ]);
   byId("lastMem").replaceChildren(box);
   clearBox(); confirmFx(false);
-  if (waAutoOn()) setTimeout(() => waOpen(c, msg), 400);
+  if (open) setTimeout(() => waOpen(c, msg), 400);
   else speak(`Mesaj pentru ${c.name}. Apasă Deschide WhatsApp.`);
-  return true;
 }
 // ---------- trimitere și export ----------
 async function shareText(text) {
@@ -2923,7 +3033,7 @@ function renderSettings() {
   if (isNative) gcRenderCals(); else bkRender();
   syncRender(); syncEnsure();
 }
-const APP_VER = "v4.7 · 23.11.2026";
+const APP_VER = "v4.8 · 23.11.2026";
 async function sndChanged() {
   lsSetRaw("sndAlarm", byId("sndAlarm").value);
   lsSetRaw("sndLen", byId("sndLen").value);
@@ -4005,6 +4115,13 @@ async function wipeLocalData() {
 //  La fiecare versiune nouă se adaugă un rând SUS în CHANGELOG.
 // ====================================================================
 const CHANGELOG = [
+  ["v4.8", "23.11.2026", [
+    "📒 WhatsApp + agenda telefonului: în ⚙️ Setări → 💬 Gestionare WhatsApp bifezi „Caută persoanele și în agenda telefonului”. Planner doar citește agenda și nu o afișează ca listă; îți arată doar câte persoane a găsit.",
+    "✏️ Nume în Planner: cauți persoana în agendă și îi dai numele pe care îl spui tu (ex. „Sabinutza” → „Sabina”). Agenda rămâne neschimbată.",
+    "Lista din Planner e compactă: un rând pe persoană, cu ✏️ editare și 🗑️ ștergere. Dacă la comandă se potrivesc mai multe persoane (ex. doi „Ion”), alegi pe ecran.",
+    "A dispărut mesajul „Nu ai făcut backup de mai mult de 7 zile” (copia automată și sincronizarea prin cont protejează oricum datele).",
+    "Cere o singură dată APK-ul nou (butonul „📲 Descarcă APK-ul nou”) și permisiunea „Contacte”."
+  ]],
   ["v4.7", "23.11.2026", [
     "⏰ Memento: arată implicit doar ce urmează în următoarele 7 zile, grupat pe zile (Azi, Mâine, …). Restul: butonul „🗂️ Toate” sau 📅 Calendar.",
     "🔎 Bară de căutare la Memento (caută în toate, nu doar în 7 zile). La Sarcini și Istoric poți căuta acum după mai multe cuvinte, în orice ordine.",
@@ -4160,11 +4277,8 @@ document.addEventListener("visibilitychange", () => {
 setTimeout(() => updCheck(false), 2500);
 setInterval(() => updCheck(false), 10 * 60000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { updOpenAt = Date.now(); remTick(); syncNative(); syncTouched(); updCheck(false); } });
-if (isNative) {
-  const lb = +localStorage.getItem("lastBackup") || 0;
-  if ((remGet().length || tasksGet().length) && Date.now() - lb > 7 * 86400000)
-    flash("💾 Nu ai făcut backup de mai mult de 7 zile. Deschide ⚙️ Setări → Backup.", "warnbox");
-}
+// (v4.8: am scos avertizarea „Nu ai făcut backup de mai mult de 7 zile”: copia automată + sincronizarea prin cont protejează datele)
+if (isNative && waAgendaOn()) setTimeout(() => waAgendaLoad(false), 3000); // agenda telefonului, pentru comenzile WhatsApp
 </script>
 </body>
 </html>
