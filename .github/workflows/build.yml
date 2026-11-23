@@ -91,11 +91,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - name: Pregateste varianta PC si pachetul de update
@@ -122,5 +117,26 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site
+
+  # publicarea separat, intr-un job care porneste dupa urcarea pachetului.
+  # In acelasi job, GitHub uneori nu „vede” inca pachetul abia urcat: „No artifacts named github-pages”
+  # (problema cunoscuta: github.com/actions/deploy-pages/issues/451). Asteptam putin si mai incercam o data.
+  deploy:
+    needs: web
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy2.outputs.page_url }}
+    steps:
+      - run: sleep 15
       - id: deploy
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+      - if: steps.deploy.outcome == 'failure'
+        run: sleep 45
+      - id: deploy2
+        if: steps.deploy.outcome == 'failure'
         uses: actions/deploy-pages@v5
