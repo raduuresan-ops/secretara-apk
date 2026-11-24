@@ -100,6 +100,7 @@ details.sgrp .sub{display:block;margin-top:16px;font-size:14px}
 .lfile .lhead .txt{flex:1 1 auto;margin:0;font-weight:600}
 .lcount{font-size:12px;color:var(--muted);background:#343b4d;border-radius:8px;padding:1px 7px}
 .lfile.open{outline:1px solid #3a4a6e}
+.item.hiNew{outline:2px solid var(--ok);transition:outline-color .3s}
 /* lista WhatsApp: un rând pe persoană */
 .waRow{display:flex;align-items:center;gap:6px;padding:7px 0;border-top:1px solid #343b4d;font-size:14px}
 .waRow:first-child{border-top:none}
@@ -175,7 +176,7 @@ body.native #ptr{top:42px}
       <span id="status">Pregătit</span>
     </div>
     <div id="dbg" class="calHint"></div>
-    <textarea id="textBox" placeholder="Dictează sau scrie aici… La final spune „gata”."></textarea>
+    <textarea id="textBox" placeholder="Dictează sau scrie aici… La final spune „gata” sau „stop”."></textarea>
     <p class="calHint pcOnly" style="margin:4px 0 0;">Scrie, de exemplu: „mâine la ora 12:00 alarmă plată factură” sau „vineri la 9 memento ședință”, apoi apasă <b>Ctrl+Enter</b> sau „Salvează”.</p>
     <div id="dictSuggest"></div>
     <button id="btnAuto" class="primary wide">🪄 Salvează (automat)</button>
@@ -565,7 +566,8 @@ body.native #ptr{top:42px}
     <h3>🎤 Cum dictezi</h3>
     <ul>
       <li>Apasă <b>🎤 Start / Stop</b> și vorbește normal.</li>
-      <li>La final spune <b>„gata”</b> (sau „salvează” / „terminat”): aplicația oprește microfonul și salvează automat.</li>
+      <li>La final spune <b>„gata”</b> sau <b>„stop”</b> (merg și „salvează” / „terminat”): aplicația oprește microfonul și salvează automat.</li>
+      <li>Imediat ce apare „🎙️ Ascult… vorbește” poți vorbi. Dacă taci câteva secunde, microfonul se repornește singur, fără să pierzi textul.</li>
       <li>Sau apasă din nou 🎤, corectează textul dacă e nevoie, apoi alege un buton de salvare.</li>
     </ul>
 
@@ -590,6 +592,15 @@ body.native #ptr{top:42px}
       <li>„diseară la 8 memento medicamente”, „poimâine dimineață …”</li>
       <li>Ore: „la 3 și un sfert”, „la 7 fără un sfert”, „la ora 14:30”</li>
       <li>Repetitive: „în fiecare zi la 8 …”, „în fiecare luni la 9 …”, „lunar pe 5 la 10 …”</li>
+      <li><b>Programe</b> (de la o zi, la un interval, pe o perioadă):
+        „începând de azi, la ora 8, din 2 în 2 zile, pentru următoarele 2 săptămâni, alarmă cu textul ia pastila” ·
+        „începând de azi, pentru următoarele 5 zile, la ora 12, memento cu textul …” ·
+        „începând de săptămâna viitoare, săptămânal, vineri, alarmă cu textul …” ·
+        „în fiecare luni și joi la 9 …” / „lunea și miercurea la 18 …” ·
+        „o zi da, o zi nu, la 7, timp de o săptămână …” ·
+        „zilnic până pe 1 decembrie la 20 …” · „lunar pe 5, pentru următoarele 6 luni …” ·
+        „de mâine, de 3 ori, la 2 zile o dată, la ora 10 …”.
+        Fără sfârșit spus, cele zilnice / săptămânale / lunare se repetă până le oprești; „din 3 în 3 zile” fără sfârșit se pune pe 3 luni. Butonul „✖ Tot programul” le șterge pe toate.</li>
       <li>Mai multe deodată: „mâine la 9 alarmă X <b>și apoi</b> la 12 memento Y”</li>
       <li><b>Liste</b>: „pune în liste următoarea listă cuprinzând: corp A virgulă corp B virgulă de mers la X” → o listă cu elementele unul sub altul, fiecare cu bifă (în subfolderul 📁 Liste). Între elemente spune „virgulă” (sau „punct și virgulă”, „rând nou”).</li>
       <li>Listă cu nume, într-un subfolder: „pune în folderul Cumpărături o listă <b>cu numele Auchan</b>” (listă goală) sau „… cu numele Auchan <b>cu</b> pâine virgulă lapte”. Dacă lista „Auchan” există deja acolo, elementele se adaugă în ea.</li>
@@ -712,7 +723,7 @@ function hm(m) {
 }
 
 const CUTS = [
-  /\b(?:te\s+rog\s+)?(?:pune|seteaza|fa|adauga|creeaza|programeaza)(?:\s+(?:mi|imi))?(?:\s+(?:o|un))?\s+(?:alarma|memento|reminder|notificare|popup|pop\s+up)(?:\s+(?:message|mesaj))?\b/,
+  /\b(?:te\s+rog\s+)?(?:sa\s+)?(?:pune|pui|puneti|seteaza|setezi|fa|faci|adauga|adaugi|creeaza|creezi|programeaza|programezi)(?:\s+(?:mi|imi))?(?:\s+(?:o|un|niste))?\s+(?:alarma|alarme|memento|mementouri|reminder|notificare|notificari|popup|pop\s+up)(?:\s+(?:message|mesaj))?\b/,
   /\b(?:sa\s+)?(?:imi|ma|mi)\s+(?:amintesti|reamintesti|aminteste|reaminteste)\b/,
   /\b(?:amintesti|reamintesti|aminteste|reaminteste)\s+(?:mi|imi)\b/,
   /\bprintr?\s+un\s+(?:popup|pop\s+up)(?:\s+(?:message|mesaj))?\b/,
@@ -930,6 +941,192 @@ function parseMulti(raw, now = new Date()) {
   return out;
 }
 
+// ====================================================================
+//  v4.9: programe cu repetare („plan”): de la o dată, la un interval, pe o perioadă
+//   „începând de azi, la ora 8, din 2 în 2 zile, pentru următoarele 2 săptămâni, alarmă cu textul …”
+//   „începând de azi, pentru următoarele 5 zile, la ora 9, memento cu textul …”
+//   „începând de săptămâna viitoare, săptămânal, vineri, alarmă cu textul …”
+//   + „în fiecare luni și joi la 9 …”, „lunea și miercurea …”, „o zi da, o zi nu …”, „de 3 ori, la 2 zile o dată …”,
+//     „zilnic până pe 15 decembrie …”, „lunar pe 5, pentru următoarele 6 luni …”, „timp de o săptămână …”
+//  Întoarce null dacă fraza nu e un program (atunci se folosește parseCommand ca înainte).
+// ====================================================================
+const PLAN_MAX = 60;
+const DAYS_PL = { lunea: 1, martea: 2, miercurea: 3, joia: 4, vinerea: 5, sambata: 6, sambetele: 6, duminica: 0, duminicile: 0 };
+const DAY_NAMES = ["duminică", "luni", "marți", "miercuri", "joi", "vineri", "sâmbătă"];
+function parsePlan(raw, now = new Date()) {
+  let o = raw.normalize("NFC").trim();
+  let n = normEq(o).replace(/-/g, " ");
+  const blank = (s, e) => { o = o.slice(0, s) + " ".repeat(e - s) + o.slice(e); n = n.slice(0, s) + " ".repeat(e - s) + n.slice(e); };
+  const take = (re, ok) => { const m = re.exec(n); if (!m || (ok && !ok(m))) return null; blank(m.index, m.index + m[0].length); return m; };
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const addD = (d, k) => { const x = new Date(d); x.setDate(x.getDate() + k); return x; };
+  const num = s => (s === "o" || s === "un" || s === "una" ? 1 : numVal(s));
+  const N = `(${NUM}|o)`, UNIT = "(zile|zi|saptamani|saptamana|luni|luna)";
+  const MON = MONTHS.join("|"), DAYN = Object.keys(DAYS).join("|");
+  const unitDays = u => (/^zi/.test(u) ? 1 : /^saptam/.test(u) ? 7 : 0);
+  // o dată spusă: azi / mâine / săptămâna viitoare / vineri / 15 decembrie / 15.12
+  const dateOf = s => {
+    s = s.trim();
+    let m;
+    if (/^(azi|astazi)$/.test(s)) return today;
+    if (s === "maine") return addD(today, 1);
+    if (s === "poimaine") return addD(today, 2);
+    if (/^saptamana\s+(viitoare|urmatoare)$/.test(s)) return addD(today, ((8 - today.getDay()) % 7) || 7);
+    if (/^saptamana\s+(asta|aceasta|curenta)$/.test(s)) return today;
+    if (/^luna\s+(viitoare|urmatoare)$/.test(s)) return new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    if ((m = new RegExp(`^(${DAYN})(?:\\s+(?:viitoare|urmatoare|care\\s+vine))?$`).exec(s))) return addD(today, ((DAYS[m[1]] - today.getDay() + 7) % 7) || 7);
+    if ((m = new RegExp(`^(${NUM})\\s+(${MON})(?:\\s+(\\d{4}))?$`).exec(s))) {
+      const d = numVal(m[1]), mo = MONTHS.indexOf(m[2]); let y = m[3] ? +m[3] : today.getFullYear();
+      let r = new Date(y, mo, d); if (!m[3] && r < today) r = new Date(y + 1, mo, d); return r;
+    }
+    if ((m = /^(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?$/.exec(s))) {
+      let y = m[3] ? +m[3] : today.getFullYear(); if (y < 100) y += 2000;
+      let r = new Date(y, +m[2] - 1, +m[1]); if (!m[3] && r < today) r = new Date(y + 1, +m[2] - 1, +m[1]); return r;
+    }
+    return null;
+  };
+  const DATE_ALT = `azi|astazi|maine|poimaine|saptamana\\s+(?:viitoare|urmatoare|asta|aceasta|curenta)|luna\\s+(?:viitoare|urmatoare)|(?:${DAYN})(?:\\s+(?:viitoare|urmatoare|care\\s+vine))?|${NUM}\\s+(?:${MON})(?:\\s+\\d{4})?|\\d{1,2}[./]\\d{1,2}(?:[./]\\d{2,4})?`;
+
+  let stepDays = null, stepMonths = null, monthDay = null, wdays = [], endEx = null, count = null;
+  let start = null, startExplicitDate = false, cue = false, recur = false, m;
+  // 1) durata: „pentru următoarele 2 săptămâni”, „timp de 5 zile”, „5 zile la rând”, „următoarea săptămână”
+  m = take(new RegExp(`\\b(?:(?:pentru|timp\\s+de|in|pe|pe\\s+parcursul)\\s+)?(?:urmatoarele|urmatorii|urmatoarea|urmatorul)\\s+(?:${N}\\s+)?(?:de\\s+)?${UNIT}\\b`), mm => !mm[1] || num(mm[1]) !== null)
+    || take(new RegExp(`\\b(?:pentru|timp\\s+de|pe\\s+o\\s+perioada\\s+de)\\s+${N}\\s+(?:de\\s+)?${UNIT}\\b`), mm => num(mm[1]) !== null)
+    || take(new RegExp(`\\b${N}\\s+(?:de\\s+)?(zile|saptamani|luni)\\s+(?:la\\s+rand|consecutiv|consecutive)\\b`), mm => num(mm[1]) !== null);
+  let durDays = null, durMonths = null;
+  if (m) { const k = m[1] ? num(m[1]) : 1, u = m[2]; if (/^lun/.test(u)) durMonths = k; else durDays = k * unitDays(u); cue = true; }
+  // 2) până la o dată: „până pe 15 decembrie”, „până vineri”, „până la sfârșitul lunii”
+  let until = null;
+  m = take(/\bpana\s+(?:la\s+)?(?:sfarsitul|finalul)\s+(lunii|saptamanii|anului)\b/);
+  if (m) { until = m[1] === "lunii" ? new Date(today.getFullYear(), today.getMonth() + 1, 0) : m[1] === "anului" ? new Date(today.getFullYear(), 11, 31) : addD(today, (7 - today.getDay()) % 7); cue = true; }
+  if (!m && (m = take(new RegExp(`\\bpana\\s+(?:pe|la|in|inclusiv)?\\s*(?:data\\s+de\\s+)?(${DATE_ALT})(?:\\s+inclusiv)?\\b`)))) { until = dateOf(m[1]); if (until) cue = true; }
+  // 3) de câte ori: „de 5 ori”
+  if ((m = take(new RegExp(`\\bde\\s+(${NUM})\\s+ori\\b`), mm => num(mm[1]) > 1))) { count = num(m[1]); cue = true; }
+  // 4) intervalul: „din 2 în 2 zile”, „la fiecare 3 zile”, „o dată la 2 săptămâni”, „o zi da, o zi nu”, „la 2 zile o dată”
+  if ((m = take(new RegExp(`\\b(?:din|la)\\s+${N}\\s+in\\s+${N}\\s+(?:de\\s+)?${UNIT}\\b`), mm => num(mm[2]) > 0))) {
+    const k = num(m[2]); if (/^lun/.test(m[3])) stepMonths = k; else stepDays = k * unitDays(m[3]); cue = true; recur = true;
+  } else if ((m = take(new RegExp(`\\b(?:la\\s+fiecare|o\\s+data\\s+la|odata\\s+la|la)\\s+${N}\\s+(?:de\\s+)?${UNIT}(?:\\s+o\\s+data)?\\b`), mm => num(mm[1]) > 0 && (/^(la\s+fiecare|o\s*data)/.test(mm[0]) || /o\s+data$/.test(mm[0]))))) {
+    const k = num(m[1]); if (/^lun/.test(m[2])) stepMonths = k; else stepDays = k * unitDays(m[2]); cue = true; recur = true;
+  } else if (take(/\bo\s+zi\s+da\s*,?\s*(?:si\s+)?o\s+zi\s+nu\b/)) { stepDays = 2; cue = true; recur = true; }
+  // 5) zilele săptămânii: „în fiecare luni și joi”, „lunea și joia”, „săptămânal, vineri”, „în fiecare săptămână vinerea”
+  const weekly = !!take(/\b(?:saptamanal|in\s+fiecare\s+saptamana|o\s+data\s+pe\s+saptamana|odata\s+pe\s+saptamana|saptamana\s+de\s+saptamana)\b/);
+  const fiecare = new RegExp(`\\b(?:in\\s+fiecare|fiecare|toate|in\\s+toate)\\s+(${DAYN})((?:\\s*(?:,|si)\\s*(?:${DAYN}))*)`);
+  if ((m = take(fiecare))) { wdays.push(DAYS[m[1]]); (m[2].match(new RegExp(DAYN, "g")) || []).forEach(d => wdays.push(DAYS[d])); recur = true; }
+  let g = 0;
+  while (g++ < 7 && (m = take(new RegExp(`\\b(?:in\\s+|pe\\s+)?(${Object.keys(DAYS_PL).join("|")})\\b`)))) { wdays.push(DAYS_PL[m[1]]); recur = true; }
+  if (weekly) {
+    recur = true;
+    g = 0; // „săptămânal, vineri” / „săptămânal în ziua de vineri”
+    while (g++ < 7 && (m = take(new RegExp(`\\b(?:in\\s+ziua\\s+de\\s+|pe\\s+|in\\s+|si\\s+)?(${DAYN})\\b(?!\\s+(?:viitoare|urmatoare))`)))) wdays.push(DAYS[m[1]]);
+    if (!wdays.length && !stepDays) stepDays = 7;
+  }
+  wdays = [...new Set(wdays)].sort();
+  // 6) zilnic / lunar
+  if (take(/\b(?:zilnic|in\s+fiecare\s+zi|zi\s+de\s+zi|in\s+toate\s+zilele|la\s+fiecare\s+zi)\b/)) { if (!stepDays) stepDays = 1; recur = true; }
+  if ((m = take(/\b(?:lunar|in\s+fiecare\s+luna|o\s+data\s+pe\s+luna)(?:\s+(?:pe|in\s+data\s+de|la\s+data\s+de)\s+(\d{1,2}))?\b/))) { stepMonths = stepMonths || 1; if (m[1]) monthDay = +m[1]; recur = true; }
+  // 7) începutul: „începând de azi”, „începând cu săptămâna viitoare”, „de mâine”, „din 1 decembrie”
+  m = take(new RegExp(`\\b(?:incepand|incepind|cu\\s+incepere|pornind|start)\\s*(?:de\\s+la|de\\s+pe|de|din|cu|la|pe)?\\s+(?:data\\s+de\\s+)?(${DATE_ALT})\\b`));
+  if (!m && (cue || recur)) m = take(new RegExp(`\\b(?:de|din)\\s+(azi|astazi|maine|poimaine|saptamana\\s+(?:viitoare|urmatoare)|luna\\s+(?:viitoare|urmatoare))\\b`));
+  if (m) { start = dateOf(m[1]); startExplicitDate = /\d/.test(m[1]) || new RegExp(`(${MON})`).test(m[1]); }
+  // nu e un program: lăsăm parseCommand (inclusiv vechiul „începând cu 15 noiembrie” = zilnic până la termen)
+  const multiDay = wdays.length > 1, interval = (stepDays && stepDays !== 1 && stepDays !== 7) || (stepMonths && stepMonths > 1);
+  if (!(cue || interval || multiDay || (start && recur && !startExplicitDate) || (start && recur && wdays.length))) return null;
+  if (!recur && !cue) return null;
+  if (!stepDays && !stepMonths && !wdays.length) stepDays = 1; // „pentru următoarele 5 zile” = în fiecare zi
+
+  // ora, tipul și textul: din ce a rămas
+  const rest = o.replace(/\s+/g, " ").trim();
+  const p = parseCommand(rest, now);
+  const t = p.due && p.hasTime ? { h: p.due.getHours(), m: p.due.getMinutes() } : defTimeHM();
+  if (!start) start = p.due ? new Date(p.due.getFullYear(), p.due.getMonth(), p.due.getDate()) : today;
+  // ce urmează după „cu textul / mesajul” rămâne neatins (ex. „cu textul raport săptămânal”)
+  const mk = /\b(?:cu\s+)?(?:textul|mesajul)\b\s*:?/.exec(normEq(rest));
+  if (mk) {
+    const tail = rest.slice(mk.index + mk[0].length).trim();
+    const pt = tail ? parseCommand(tail, now) : null;
+    if (tail) p.text = pt && pt.hasTime ? pt.text : tail;
+  }
+  let text = String(p.text || "").replace(/^(?:\s*(?:să|sa|și|si|că|ca|cu|la|pe|de)(?=[\s,.:;]|$)[\s,.:;]*)+/i, "").replace(/(\s*[,;:]\s*){2,}/g, ", ").replace(/^[\s,.:;!?-]+|[\s,.:;!?-]+$/g, "").trim();
+  text = capFirst(text) || (p.type === "alarm" ? "Alarmă" : "Memento");
+  const at = d => new Date(d.getFullYear(), d.getMonth(), d.getDate(), t.h, t.m, 0);
+  // capătul perioadei (exclusiv)
+  if (durDays) endEx = addD(start, durDays);
+  else if (durMonths) { endEx = new Date(start); endEx.setMonth(endEx.getMonth() + durMonths); }
+  if (until) { const u = addD(until, 1); endEx = endEx ? (u < endEx ? u : endEx) : u; }
+  const open = !endEx && !count; // fără sfârșit
+  const nowMs = now.getTime() + 5000, items = [];
+  let skipped = 0;
+  const push = (d, repeat) => { const ms = at(d).getTime(); if (ms <= nowMs && !repeat) { skipped++; return; } items.push({ due: new Date(ms), repeat: repeat || null }); };
+  if (open && wdays.length) {
+    // fără sfârșit: câte un memento săptămânal pentru fiecare zi aleasă (se repetă singur)
+    wdays.forEach(wd => { let d = new Date(start); while (d.getDay() !== wd) d = addD(d, 1); let ms = at(d).getTime(); if (ms <= nowMs) d = addD(d, 7); push(d, "weekly"); });
+  } else if (open && !stepMonths && (stepDays === 1 || stepDays === 7)) {
+    let d = new Date(start); if (at(d).getTime() <= nowMs) d = addD(d, stepDays); push(d, stepDays === 1 ? "daily" : "weekly");
+  } else if (open && stepMonths === 1) {
+    let d = monthDay ? new Date(start.getFullYear(), start.getMonth(), monthDay) : new Date(start);
+    if (d < start) d.setMonth(d.getMonth() + 1);
+    if (at(d).getTime() <= nowMs) d.setMonth(d.getMonth() + 1);
+    push(d, "monthly");
+  } else {
+    // cu sfârșit (sau interval neobișnuit fără sfârșit: următoarele 3 luni, cel mult 60)
+    const lim = endEx || (count ? null : (() => { const x = new Date(start); x.setMonth(x.getMonth() + 3); return x; })());
+    let d = new Date(start), k = 0, guard = 0;
+    if (stepMonths && monthDay) { d = new Date(start.getFullYear(), start.getMonth(), monthDay); if (d < start) d.setMonth(d.getMonth() + 1); }
+    while (guard++ < 1000 && items.length < PLAN_MAX && (!count || k < count) && (!lim || d < lim)) {
+      if (wdays.length) { if (wdays.includes(d.getDay())) { k++; push(d); } d = addD(d, 1); continue; }
+      k++; push(d);
+      if (stepMonths) { const md = monthDay || start.getDate(); d = new Date(d.getFullYear(), d.getMonth() + stepMonths, 1); d.setDate(Math.min(md, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate())); }
+      else d = addD(d, stepDays);
+    }
+  }
+  if (!items.length) return { plan: true, items, text, type: p.type, skipped, desc: "" };
+  // descriere pentru confirmare
+  const f = x => x.toLocaleDateString("ro-RO", { weekday: "short", day: "numeric", month: "short" });
+  let how = wdays.length ? "în fiecare " + wdays.map(w => DAY_NAMES[w]).join(", ") : stepMonths ? (stepMonths === 1 ? "lunar" : `din ${stepMonths} în ${stepMonths} luni`) :
+    stepDays === 1 ? "zilnic" : stepDays === 7 ? "săptămânal" : `din ${stepDays} în ${stepDays} zile`;
+  const hh = `${pad2(t.h)}:${pad2(t.m)}`;
+  const desc = items[0].repeat ? `${how}, la ${hh}, începând ${f(items[0].due)} (se repetă până îl oprești)` :
+    `${how}, la ${hh}: ${items.length} ${items.length === 1 ? "dată" : "date"}, ${f(items[0].due)} → ${f(items[items.length - 1].due)}`;
+  return { plan: true, items, text, type: p.type, skipped, desc, defaultTime: !(p.due && p.hasTime) };
+}
+// creează programul: un memento pe fiecare dată (legate prin „grp”) sau unul repetitiv
+async function createPlan(pl, forcedType, force) {
+  const type = forcedType || (pl.type === "alarm" ? "alarm" : "popup");
+  if (!pl.items.length) { flash(`⚠️ Toate datele din program au trecut deja${pl.skipped ? ` (${pl.skipped})` : ""}. Spune altă dată de început. Textul a rămas în căsuță.`); return; }
+  if (!force) {
+    const sims = remSimilar(pl.text, pl.items[0].due.getTime());
+    if (sims.length) { dupWarn([[pl.text, pl.items[0].due.getTime(), sims]], () => createPlan(pl, forcedType, true)); return; }
+  }
+  const grp = pl.items.length > 1 ? uid() : null, made = [];
+  for (const it of pl.items) made.push(await createReminder(pl.text, it.due.getTime(), type, it.repeat, undefined, grp ? { grp } : null));
+  clearBox();
+  const kind = type === "alarm" ? (made.length === 1 ? "alarma" : "alarme") : (made.length === 1 ? "memento-ul" : "memento-uri");
+  const notes = [];
+  if (pl.defaultTime) notes.push(`Nu ai spus ora, am pus ora implicită ${pad2(defTimeHM().h)}:${pad2(defTimeHM().m)}.`);
+  if (pl.skipped) notes.push(`${pl.skipped === 1 ? "O dată" : pl.skipped + " date"} din program ${pl.skipped === 1 ? "a trecut" : "au trecut"} deja azi și nu s-${pl.skipped === 1 ? "a" : "au"} pus.`);
+  if (made.length === 1) {
+    showLast(made[0], [`📆 ${pl.desc}`].concat(notes).join(" "));
+  } else {
+    byId("lastMem").replaceChildren(el("div", { class: "item okbox" }, [
+      el("div", { text: `✅ ${made.length} ${type === "alarm" ? "alarme" : "memento-uri"}: ${pl.text}` }),
+      el("small", { style: "display:block;margin-top:4px", text: "📆 " + pl.desc + (notes.length ? " · " + notes.join(" ") : "") }),
+      ...made.slice(0, 5).map(r => el("div", { class: "calHint", text: `${type === "alarm" ? "⏰" : "🔔"} ${fmtDT(r.due)}` })),
+      made.length > 5 ? el("div", { class: "calHint", text: `… și încă ${made.length - 5} (le vezi în 📅 Calendar)` }) : "",
+      el("button", { class: "deleteBtn", text: "↩ Anulează toate", onclick: () => { made.forEach(r => remDelete(r.id, true)); byId("lastMem").replaceChildren(); } })
+    ]));
+    lastAutoHide("mem", made[0].id);
+  }
+  openView("mem");
+  confirmFx(false);
+  speak(made.length === 1 ? `Am programat ${kind} ${pl.desc.replace(/\(.*\)/, "")}. ${pl.text}` : `Am programat ${made.length} ${kind}, ${pl.desc.split(":")[0]}, începând ${spokenWhen(made[0].due)}. ${pl.text}`);
+}
+function grpDelete(gid) {
+  const l = remGet(), kids = l.filter(x => x.grp === gid);
+  if (!kids.length || !confirm(`Ștergi toată seria (${kids.length} memento-uri / alarme rămase)?`)) return;
+  kids.forEach(k => cancelNative(k));
+  remSet(l.filter(x => x.grp !== gid)); refresh();
+}
+
 // ---------- Prima apariție următoare pentru memento repetitiv ----------
 function nextOcc(dueMs, kind, nowMs) {
   const d = new Date(dueMs);
@@ -1047,6 +1244,26 @@ function setStatus(t) { byId("status").textContent = t; }
 function dbg(t) { byId("dbg").textContent = t; }
 function flash(text, cls, kids) {
   byId("lastMem").replaceChildren(el("div", { class: "item " + (cls || "warnbox") }, [el("div", { text }), ...(kids || [])]));
+  if (cls === "okbox") lastAutoHide(); // confirmările „✅ …” dispar singure; avertizările rămân
+}
+// v4.9: cardul de confirmare de sub butoane dispare singur după 10 s (dacă nu l-ai atins),
+// apoi arată elementul nou în tabul lui (Memento / Sarcini), evidențiat scurt.
+let lastHideT = null;
+function lastAutoHide(view, id, ms) {
+  clearTimeout(lastHideT);
+  const box = byId("lastMem"), card = box.firstElementChild; if (!card) return;
+  card.addEventListener("pointerdown", () => { card.dataset.keep = "1"; }, { once: true });
+  lastHideT = setTimeout(() => {
+    if (box.firstElementChild !== card || card.dataset.keep) return;
+    card.style.transition = "opacity .4s"; card.style.opacity = "0";
+    setTimeout(() => {
+      if (box.firstElementChild === card) box.replaceChildren();
+      if (!view || nListening || webRec || !TABS.includes(curView)) return;
+      if (curView !== view) openView(view);
+      const it = id != null && document.querySelector(`#v-${view} [data-rid="${id}"]`);
+      if (it) { it.scrollIntoView({ block: "center", behavior: "smooth" }); it.classList.add("hiNew"); setTimeout(() => it.classList.remove("hiNew"), 2500); }
+    }, 420);
+  }, ms || 10000);
 }
 
 // ---------- stocare ----------
@@ -1343,6 +1560,7 @@ function saveAsTask(text) {
   const f = item.cat && folderById(item.cat);
   flash("✅ Sarcină salvată: " + clean + (f ? `  (📁 ${f.name})` : ""), "okbox");
   openView("tasks"); renderBadges();
+  lastAutoHide("tasks", item.id);
 }
 function tasksSorted() {
   const rank = t => (t.priority === "urgent" ? 0 : t.priority === "important" ? 1 : 2);
@@ -1402,7 +1620,7 @@ function listFileItem(t) {
 }
 function taskItem(t) {
   if (Array.isArray(t.list)) return listFileItem(t);
-  const box = el("div", { class: "item" });
+  const box = el("div", { class: "item", "data-rid": String(t.id) });
   const extra = (t.priority === "urgent" ? " 🔴" : t.priority === "important" ? " 🟡" : "") + (t.due ? ` 📅 ${t.due}` : "");
   const isList = false;
   box.append(
@@ -2145,11 +2363,14 @@ function remDelete(id, withSeries) {
 }
 const REP_LABEL = { daily: "🔁 zilnic", weekly: "🔁 săptămânal", monthly: "🔁 lunar" };
 function reminderItem(r, seriesLeft) {
-  const box = el("div", { class: "item" });
+  const box = el("div", { class: "item", "data-rid": String(r.id) });
   const txt = el("div", { class: "txt", text: (r.type === "alarm" ? "⏰ " : "🔔 ") + r.text });
-  const kids = r.series ? 0 : remGet().filter(x => x.series === r.id).length;
+  const all = remGet();
+  const kids = r.series ? 0 : all.filter(x => x.series === r.id).length;
+  const grpN = r.grp ? all.filter(x => x.grp === r.grp).length : 0;
   const info = (r.repeat ? " · " + REP_LABEL[r.repeat] : "") + (r.fired ? " · a sunat" : "") +
-    (seriesLeft > 1 ? ` · 📆 zilnic, încă ${seriesLeft - 1} zile până la termen` : "") + (kids ? ` · 📆 anunțat zilnic (${kids})` : "");
+    (seriesLeft > 1 ? ` · 📆 zilnic, încă ${seriesLeft - 1} zile până la termen` : "") + (kids ? ` · 📆 anunțat zilnic (${kids})` : "") +
+    (grpN > 1 ? ` · 📆 program: ${grpN} rămase` : "");
   box.append(txt,
     el("small", { text: fmtDT(r.due) + info }, [folderTag(r) || ""]),
     el("div", { class: "row" }, [
@@ -2157,6 +2378,7 @@ function reminderItem(r, seriesLeft) {
       el("button", { text: "✏️ Edit", onclick: () => editReminder(r, box) }),
       el("button", { text: "📆 Zilnic / ± zile", title: "Anunță-mă zilnic până la termen sau fă o copie", onclick: () => cloneUI(r, box) }),
       ...(r.series ? [el("button", { text: "✖ Oprește seria", onclick: () => seriesStop(r.series) })] : []),
+      ...(grpN > 1 ? [el("button", { text: "✖ Tot programul", title: "Șterge toate datele din acest program", onclick: () => grpDelete(r.grp) })] : []),
       el("button", { text: "📁", title: "Mută în subfolder", onclick: () => folderPicker(box, r, "reminders", "mem") }),
       el("button", { class: "deleteBtn", text: "Șterge", onclick: () => remDelete(r.id) })
     ]));
@@ -2251,6 +2473,7 @@ function showLast(r, note) {
     ])
   ]);
   b.replaceChildren(card);
+  lastAutoHide("mem", r.id);
 }
 
 // ====================================================================
@@ -2369,7 +2592,7 @@ function learnFromEdit(finalTxt) {
 // ====================================================================
 //  Salvare: automat / sarcină / memento / alarmă
 // ====================================================================
-const STOPRE = /\b(gata|salveaza|save|terminat)\s*[.!]?$/;
+const STOPRE = /\b(gata|stop|stopp|salveaza|save|terminat)\s*[.!]?$/;
 function stripStop(t) { const m = STOPRE.exec(normEq(t)); return m ? t.slice(0, m.index).trim() : t.trim(); }
 const isRemP = p => (p.byKeyword && (p.type === "alarm" || p.type === "popup")) || (!p.byKeyword && p.due && p.hasTime);
 function clearBox() { byId("textBox").value = ""; }
@@ -2393,6 +2616,7 @@ async function createMany(parts, forcedType, force) {
     el("button", { class: "deleteBtn", text: "↩ Anulează toate", onclick: () => { made.forEach(r => remDelete(r.id, true)); byId("lastMem").replaceChildren(); } })
   ]));
   openView("mem");
+  lastAutoHide("mem", made[0] && made[0].id);
   confirmFx(false);
   speak(`Am programat ${made.length} memento-uri.`);
 }
@@ -2645,6 +2869,9 @@ function saveText(mode, raw) {
   if (waCommand(text)) return; // „trimite-i lui X pe WhatsApp …”
   if ((mode === "auto" || mode === "task") && voiceCommand(text)) return; // folder nou / listă
   if (mode === "task") { saveAsTask(text); return; }
+  // program cu repetare: „începând de azi, din 2 în 2 zile, pentru următoarele 2 săptămâni …”
+  const plan = parsePlan(text);
+  if (plan) { createPlan(plan, mode === "auto" ? null : mode); return; }
   const parts = parseMulti(text);
   if (mode === "auto") {
     if (parts.length > 1 && parts.every(isRemP)) { createMany(parts); return; }
@@ -2700,16 +2927,27 @@ async function nativeBegin(sess) {
   nLastEvt = Date.now();
   try {
     await P("SpeechRecognition").start({ language: "ro-RO", maxResults: 5, partialResults: true, popup: false });
+    // v4.9: pluginul trimite „started” abia când începi să vorbești, nu când microfonul e gata.
+    // Înainte, ecranul rămânea pe „Pornesc microfonul… așteaptă” până vorbeai → părea că nu pornește.
+    // Acum: imediat ce pornirea a reușit, arătăm „Ascult… vorbește” (+ o vibrație scurtă la prima pornire).
+    if (!nListening || sess !== nSession) return;
+    nFails = 0;
+    if (!/^🎙️/.test(byId("status").textContent)) {
+      setStatus("🎙️ Ascult… vorbește");
+      if (!nReadyBuzz) { nReadyBuzz = true; if (navigator.vibrate) navigator.vibrate(30); }
+    }
+    dbg("");
   } catch (e) {
     if (!nListening || sess !== nSession) return;
     if (/permi/i.test(errMsg(e))) nPermOk = false; // permisiunea a fost retrasă: o verificăm din nou data viitoare
     nFails++;
     if (nFails > 6) { stopNative(false); setStatus("⚠️ Microfonul nu pornește: " + errMsg(e)); return; }
-    dbg("repornesc microfonul… (" + errMsg(e) + ")");
+    if (nFails >= 3) dbg("încerc din nou microfonul… (" + errMsg(e) + ")");
     try { await P("SpeechRecognition").stop(); } catch (e2) {}
-    scheduleBegin(700);
+    scheduleBegin(500);
   }
 }
+let nReadyBuzz = false;
 // paznic: dacă în 7 secunde nu vine niciun semnal de la recunoaștere, repornim microfonul
 let nStartAt = 0, nLastHeard = 0;
 const mmss = ms => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${pad2(s % 60)}`; };
@@ -2721,14 +2959,14 @@ function nWatchdog() {
   if (silS && now - (nLastHeard || nStartAt) > silS * 1000) { stopNative(false); setStatus(`⏹️ Oprit după ${silS} s de liniște. Verifică textul și salvează.`); return; }
   const st = byId("status").textContent;
   if (/^🎙️/.test(st)) setStatus("🎙️ Ascult… " + mmss(now - nStartAt) + (maxM ? ` / ${maxM}:00` : ""));
-  if (Date.now() - nLastEvt < 7000) return;
+  // Google oprește singur ascultarea după ~5 s de liniște, fără să ne anunțe: o repornim discret (fără mesaje pe ecran)
+  if (Date.now() - nLastEvt < 6000) return;
   nKicks++;
-  if (nKicks > 6 && !nHeard) {
+  if (nKicks > 9 && !nHeard) {
     stopNative(false);
-    setStatus("⚠️ Nu am primit nimic de la recunoașterea vocală. Verifică ⚙️ Setări → Recunoaștere vocală Google.");
+    setStatus("⚠️ Nu am auzit nimic. Apasă din nou 🎤 și vorbește. Dacă tot nu merge: ⚙️ Setări → 🎤 Dictare → Recunoaștere vocală Google.");
     return;
   }
-  dbg("repornesc microfonul…");
   nLastEvt = Date.now();
   Promise.resolve().then(() => P("SpeechRecognition").stop()).catch(() => {}).then(() => scheduleBegin(350));
 }
@@ -2764,9 +3002,9 @@ async function startNative() {
     SRp.addListener("listeningState", d => {
       if (!d || !nListening) return;
       nLastEvt = Date.now();
-      if (d.status === "started") {
-        nAfterCommit = false; nFails = 0; setStatus("🎙️ Ascult… vorbește");
-        if (!nHeard && !nSegs.length && navigator.vibrate) navigator.vibrate(25); // semn scurt: poți vorbi
+      if (d.status === "started") { // = ai început să vorbești
+        nAfterCommit = false; nFails = 0;
+        if (!/^🎙️/.test(byId("status").textContent)) setStatus("🎙️ Ascult… vorbește");
       }
       else if (d.status === "stopped") {
         if (STOPRE.test(normEq(nText()))) { stopNative(true); return; }
@@ -2778,15 +3016,13 @@ async function startNative() {
   clearTimeout(nRestartT);
   byId("textBox").value = ""; nSegs = []; nPartial = ""; nFails = 0; nKicks = 0; nHeard = false; nAfterCommit = false; nDictated = ""; nKeys = buildKeys();
   byId("dictSuggest").replaceChildren();
-  nListening = true; nStartAt = Date.now(); nLastHeard = 0;
+  nListening = true; nStartAt = Date.now(); nLastHeard = 0; nReadyBuzz = false;
   setRecUi(true);
-  setStatus("⏳ Pornesc microfonul… așteaptă");
+  setStatus("⏳ Pornesc microfonul…");
+  dbg("");
   clearInterval(nWatch); nWatch = setInterval(nWatchdog, 1000);
-  // doar dacă tocmai ai oprit (sub 2,5 s) mai oprim o dată sesiunea veche; altfel pornim imediat
-  if (Date.now() - nLastStop < 2500) {
-    try { await withTimeout(Promise.resolve(SRp.stop()), 350); } catch (e) {}
-    scheduleBegin(120);
-  } else nativeBegin(nSession);
+  // pluginul închide singur sesiunea veche înainte de una nouă: pornim imediat, fără opriri și pauze în plus
+  nativeBegin(nSession);
 }
 function stopPluginSafely() {
   const s = nSession;
@@ -3033,7 +3269,7 @@ function renderSettings() {
   if (isNative) gcRenderCals(); else bkRender();
   syncRender(); syncEnsure();
 }
-const APP_VER = "v4.8 · 23.11.2026";
+const APP_VER = "v4.9 · 24.11.2026";
 async function sndChanged() {
   lsSetRaw("sndAlarm", byId("sndAlarm").value);
   lsSetRaw("sndLen", byId("sndLen").value);
@@ -4115,6 +4351,13 @@ async function wipeLocalData() {
 //  La fiecare versiune nouă se adaugă un rând SUS în CHANGELOG.
 // ====================================================================
 const CHANGELOG = [
+  ["v4.9", "24.11.2026", [
+    "🎤 Microfonul: imediat ce pornește apare „🎙️ Ascult… vorbește” (+ o vibrație scurtă). Înainte, ecranul rămânea pe „Pornesc microfonul… așteaptă” până începeai să vorbești și părea că nu merge. Când taci câteva secunde, microfonul se repornește singur, fără mesaje.",
+    "🗓️ Programe din voce: „începând de azi, la ora 8, din 2 în 2 zile, pentru următoarele 2 săptămâni, alarmă cu textul …”, „începând de azi, pentru următoarele 5 zile …”, „începând de săptămâna viitoare, săptămânal, vineri …”, „în fiecare luni și joi …”, „o zi da, o zi nu …”, „zilnic până pe 1 decembrie …”, „lunar pe 5, pentru următoarele 6 luni …”, „de 3 ori, la 2 zile o dată …”. Exemplele sunt în ❓ Ajutor.",
+    "Programele apar în Memento și în 📅 Calendar; „✖ Tot programul” le șterge pe toate deodată.",
+    "✅ Cardul de confirmare de sub butoane dispare singur după 10 secunde (dacă nu-l atingi), iar elementul nou apare evidențiat în tabul lui.",
+    "🛑 „Stop” oprește dictarea și salvează, la fel ca „gata”."
+  ]],
   ["v4.8", "23.11.2026", [
     "📒 WhatsApp + agenda telefonului: în ⚙️ Setări → 💬 Gestionare WhatsApp bifezi „Caută persoanele și în agenda telefonului”. Planner doar citește agenda și nu o afișează ca listă; îți arată doar câte persoane a găsit.",
     "✏️ Nume în Planner: cauți persoana în agendă și îi dai numele pe care îl spui tu (ex. „Sabinutza” → „Sabina”). Agenda rămâne neschimbată.",
