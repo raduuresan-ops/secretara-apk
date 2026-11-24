@@ -591,6 +591,7 @@ body.native #ptr{top:42px}
       <li>„mâine la ora 9 pune o alarmă cu textul ședință la primărie”</li>
       <li>„amintește-mi peste 2 ore să sun la bancă”</li>
       <li>„vineri la 5 și jumătate memento dentist”</li>
+      <li><b>„… cu textul: …”</b>: tot ce spui după „cu textul” (sau „cu mesajul”, cu sau fără „două puncte”) devine textul, exact cum l-ai spus; ce e înainte e doar comanda. Ex.: „Fă un test, în 5 minute să sune o alarmă <b>cu textul: test 2</b>” → alarmă peste 5 minute, textul „Test 2”.</li>
       <li>„pe 20 noiembrie la 10 alarmă plată impozit”</li>
       <li>„pe 20 noiembrie alarmă ITP 15 SRL expiră <b>începând cu 15 noiembrie</b>” → alarmă în fiecare zi pe 15, 16, 17, 18, 19 („⏳ Mai sunt 5 zile: …”) și termenul pe 20. La fel: „<b>și cu 5 zile înainte</b>”, „zilnic cu o săptămână înainte”.</li>
       <li>„diseară la 8 memento medicamente”, „poimâine dimineață …”</li>
@@ -743,7 +744,29 @@ const CUTS = [
   /\btaskuri\b/,
 ];
 
-function parseCommand(raw, now = new Date(), defaultBase = null) {
+// v5.2: „… cu textul: X” / „… cu mesajul X” → X este textul, exact cum l-ai spus; ce e înainte e doar comanda
+// (când, alarmă sau memento). Merge și cu „două puncte” rostit și fără „:”.
+const TXT_MARK = /\b(?:cu\s+)?(?:textul|mesajul)(?:\s+urmator)?\b\s*(?::|doua\s+puncte\b)?\s*:?\s*/;
+function splitTextMark(raw) {
+  const n = normEq(raw), m = TXT_MARK.exec(n);
+  if (!m) return null;
+  const head = raw.slice(0, m.index), tail = raw.slice(m.index + m[0].length).trim();
+  if (!tail) return null;
+  return { head, tail, at: m.index };
+}
+const cleanTail = t => capFirst(String(t).replace(/^[\s:,.;–-]+|[\s,.;:–-]+$/g, "").replace(/\s+/g, " ").trim());
+function parseCommand(raw, now = new Date(), defaultBase = null, noMark) {
+  if (!noMark) {
+    const sp = splitTextMark(raw);
+    if (sp) {
+      const ph = parseCommand(sp.head, now, defaultBase, true);
+      if (ph.due) return Object.assign(ph, { text: cleanTail(sp.tail) || ph.text });
+      // data / ora spuse după text („alarmă cu textul dentist mâine la 10”): le luăm din text
+      const pt = parseCommand(sp.tail, now, defaultBase, true);
+      if (pt.due) return Object.assign(pt, { type: ph.byKeyword ? ph.type : pt.type, byKeyword: ph.byKeyword || pt.byKeyword });
+      return Object.assign(ph, { text: cleanTail(sp.tail) || ph.text });
+    }
+  }
   let o = raw.normalize("NFC").trim();
   let n = normEq(o).replace(/-/g, " ");
   const nOrig = n;
@@ -927,7 +950,10 @@ function parseMulti(raw, now = new Date()) {
   const n = normEq(raw).replace(/-/g, " ");
   const re = /(?:^|\s)(?:;|,)?\s*(?:(?:si\s+)?(?:iar|apoi)|si)\s+(?=(?:(?:pune|seteaza|programeaza|adauga|creeaza)\b|(?:la\s+)?ora\s+\S|la\s+\d|maine\b|poimaine\b|azi\b|astazi\b|peste\b|in\s+fiecare\b|(?:luni|marti|miercuri|joi|vineri|sambata|duminica)\b))/g;
   const cuts = []; let mm;
-  while ((mm = re.exec(n))) cuts.push([mm.index, mm.index + mm[0].length]);
+  // după „cu textul …” nu mai tăiem fraza (textul rămâne întreg), decât dacă mai urmează încă un „cu textul”
+  const marks = []; { const g = new RegExp(TXT_MARK.source, "g"); let x; while ((x = g.exec(n))) { marks.push(x.index); if (!x[0].length) g.lastIndex++; } }
+  const cutOk = c => !marks.some(k => k < c) || marks.some(k => k > c);
+  while ((mm = re.exec(n))) if (cutOk(mm.index)) cuts.push([mm.index, mm.index + mm[0].length]);
   const single = () => [parseCommand(raw, now)];
   if (!cuts.length) return single();
   const segs = []; let from = 0;
@@ -958,7 +984,9 @@ const PLAN_MAX = 60;
 const DAYS_PL = { lunea: 1, martea: 2, miercurea: 3, joia: 4, vinerea: 5, sambata: 6, sambetele: 6, duminica: 0, duminicile: 0 };
 const DAY_NAMES = ["duminică", "luni", "marți", "miercuri", "joi", "vineri", "sâmbătă"];
 function parsePlan(raw, now = new Date()) {
-  let o = raw.normalize("NFC").trim();
+  // v5.2: comanda (când, cât de des) se caută doar înainte de „cu textul”; textul rămâne neatins
+  const spT = splitTextMark(raw);
+  let o = (spT ? spT.head : raw).normalize("NFC").trim();
   let n = normEq(o).replace(/-/g, " ");
   const blank = (s, e) => { o = o.slice(0, s) + " ".repeat(e - s) + o.slice(e); n = n.slice(0, s) + " ".repeat(e - s) + n.slice(e); };
   const take = (re, ok) => { const m = re.exec(n); if (!m || (ok && !ok(m))) return null; blank(m.index, m.index + m[0].length); return m; };
@@ -1045,7 +1073,8 @@ function parsePlan(raw, now = new Date()) {
   if (!start) start = p.due ? new Date(p.due.getFullYear(), p.due.getMonth(), p.due.getDate()) : today;
   // ce urmează după „cu textul / mesajul” rămâne neatins (ex. „cu textul raport săptămânal”)
   const mk = /\b(?:cu\s+)?(?:textul|mesajul)\b\s*:?/.exec(normEq(rest));
-  if (mk) {
+  if (spT) p.text = cleanTail(spT.tail);
+  else if (mk) {
     const tail = rest.slice(mk.index + mk[0].length).trim();
     const pt = tail ? parseCommand(tail, now) : null;
     if (tail) p.text = pt && pt.hasTime ? pt.text : tail;
@@ -3075,10 +3104,12 @@ function nWatchdog() {
   if (/^🎙️/.test(st)) setStatus("🎙️ Ascult… " + mmss(now - nStartAt) + (maxM ? ` / ${maxM}:00` : ""));
   // Google oprește singur ascultarea după ~5 s de liniște, fără să ne anunțe: o repornim discret (fără mesaje pe ecran).
   // Până auzim primul cuvânt repornim mai repede (4 s), ca să nu aștepți degeaba.
-  if (Date.now() - nLastEvt < (nHeard ? 6000 : 4000)) return;
+  // v5.2: 7 s (înainte 4 s până la primul cuvânt): mai puține reporniri = mai puține „bipuri”.
+  // Cu APK-ul v5.1, liniștea vine oricum ca eroare de la Google și repornim imediat, fără să așteptăm paznicul.
+  if (Date.now() - nLastEvt < 7000) return;
   nKicks++;
-  nLog("niciun semnal de " + (nHeard ? 6 : 4) + " s → repornesc");
-  if (nKicks > 14 && !nHeard) {
+  nLog("niciun semnal de 7 s → repornesc");
+  if (nKicks > 9 && !nHeard) {
     stopNative(false);
     setStatus("⚠️ Nu am auzit nimic. Apasă din nou 🎤 și vorbește. Dacă tot nu merge: ⚙️ Setări → 🎤 Dictare → Recunoaștere vocală Google.");
     return;
@@ -3125,12 +3156,9 @@ async function startNativeInner() {
   // pluginul închide singur sesiunea veche înainte de una nouă: pornim imediat, fără opriri și pauze în plus
   const s = nSession;
   await nativeBegin(s);
-  // prima pornire după deschiderea aplicației (sau după fundal): facem singuri „Stop + Start” după 0,8 s,
-  // exact ce trebuia să faci manual. Dacă între timp ai început deja să vorbești și apare text, nu mai repornim.
-  if (nCold) {
-    nCold = false;
-    setTimeout(() => { if (nListening && s === nSession && !nHeard) { nLog("prima pornire → repornesc automat"); nativeBegin(s); } }, 800);
-  }
+  // v5.2: fără repornirea automată fixă de la prima pornire (făcea un „bip” în plus de fiecare dată).
+  // Dacă vorbești și nu apare niciun cuvânt, regula din onListenState repornește oricum după 2,5 s.
+  nCold = false;
 }
 function stopPluginSafely() {
   const s = nSession;
@@ -3379,7 +3407,7 @@ function renderSettings() {
   if (isNative) gcRenderCals(); else bkRender();
   syncRender(); syncEnsure();
 }
-const APP_VER = "v5.1 · 24.11.2026";
+const APP_VER = "v5.2 · 24.11.2026";
 async function sndChanged() {
   lsSetRaw("sndAlarm", byId("sndAlarm").value);
   lsSetRaw("sndLen", byId("sndLen").value);
@@ -4463,6 +4491,11 @@ async function wipeLocalData() {
 //  La fiecare versiune nouă se adaugă un rând SUS în CHANGELOG.
 // ====================================================================
 const CHANGELOG = [
+  ["v5.2", "24.11.2026", [
+    "🗣️ „… cu textul: …” / „… cu mesajul …”: tot ce urmează devine textul memento-ului sau al alarmei, exact cum l-ai spus (merge și cu „două puncte” rostit). Ce spui înainte (când, alarmă sau memento) e doar comanda. Ex.: „Fă un test, în 5 minute să sune o alarmă cu textul: test 2” → alarmă peste 5 minute „Test 2”.",
+    "Dacă spui ora după text („alarmă cu textul dentist mâine la 10”), merge ca înainte.",
+    "🎤 Mai puține „bipuri” la pornirea microfonului: am scos repornirea automată fixă de la prima pornire; microfonul se repornește doar când vorbești și nu apare niciun cuvânt."
+  ]],
   ["v5.1", "24.11.2026", [
     "📴 Dictare fără internet: când nu ai internet, Planner cere recunoașterea vocală direct pe telefon. Merge dacă româna offline e descărcată (o singură dată, cu internet): ⚙️ Setări → 🎤 Dictare → „⚙️ Setări voce Google” → Offline speech recognition → Română.",
     "Dacă lipsește româna offline (pe Samsung S25, Google nu o oferă), aplicația îți spune clar asta (nu mai rămâne pe „Ascult…” fără să audă nimic) și te trimite la microfonul de pe tastatura Samsung: atingi căsuța de text → 🎤 de pe tastatură → vorbești → „🪄 Salvează”. Cu internet folosești în continuare 🎤 din Planner (Google).",
