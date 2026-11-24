@@ -2952,13 +2952,14 @@ function commitPartial() {
 function scheduleBegin(ms) {
   clearTimeout(nRestartT);
   const s = nSession;
-  nRestartT = setTimeout(() => nativeBegin(s), ms);
+  nRestartT = setTimeout(() => nativeBegin(s), Math.max(ms, (typeof nPauseUntil === "number" ? nPauseUntil : 0) - Date.now()));
 }
 async function nativeBegin(sess) {
   if (!nListening || sess !== nSession) return;
   commitPartial();
   nLastEvt = Date.now();
   nBegins++;
+  nBeginAt = Date.now();
   try {
     await P("SpeechRecognition").start({ language: "ro-RO", maxResults: 5, partialResults: true, popup: false });
     // v4.9: pluginul trimite „started” abia când începi să vorbești, nu când microfonul e gata.
@@ -3030,6 +3031,7 @@ function onPartial(d) {
   if (!nListening || !d || !d.matches || !d.matches[0]) return;
   if (!nHeard) nLog("primul text auzit");
   clearTimeout(nSpeakT);
+  nQuick = 0;
   nFails = 0; nKicks = 0; nHeard = true; nLastEvt = Date.now(); nLastHeard = nLastEvt;
   const m = pickBest(d.matches, nKeys);
   // rezultatul final al frazei precedente, sosit după ce am salvat-o: îl înlocuim (e mai corect), nu-l dublăm
@@ -3049,8 +3051,9 @@ function onListenState(d) {
     // vorbești, dar nu apare niciun cuvânt în 2,5 s → repornim (ca un Stop + Start)
     const s = nSession, heardAt = nLastHeard;
     clearTimeout(nSpeakT);
-    nSpeakT = setTimeout(() => {
-      if (nListening && s === nSession && nLastHeard === heardAt) { nLog("vorbești, dar nu vine text → repornesc"); nativeBegin(s); }
+    // v5.3: o singură dată pe sesiune (altfel bipul propriei reporniri putea fi „auzit” ca vorbire → buclă de bipuri)
+    if (!nSpeakRestarted) nSpeakT = setTimeout(() => {
+      if (nListening && s === nSession && nLastHeard === heardAt && !nSpeakRestarted) { nSpeakRestarted = true; nLog("vorbești, dar nu vine text → repornesc (o dată)"); restartPaused(s, 900); }
     }, 2500);
   }
   else if (d.status === "stopped") {
@@ -3063,13 +3066,36 @@ function onListenState(d) {
 // v5.1: erorile recunoașterii ajung acum în aplicație (APK nou). Codurile Android:
 // 1 timeout rețea, 2 rețea, 3 audio, 4 server, 5 client, 6 liniște, 7 nimic recunoscut, 8 ocupat, 9 permisiuni,
 // 10 prea multe cereri, 11 server deconectat, 12 limbă nesuportată, 13 limba nu e pe telefon
-let nNetErr = 0;
+let nNetErr = 0, nBeginAt = 0, nQuick = 0, nSpeakRestarted = false;
+// v5.3: repornire „ca Stop + Start”: oprim, așteptăm, pornim din nou (ce făceai manual și mergea)
+const nHeardSinceBegin = () => nLastHeard > nBeginAt;
+let nPauseUntil = 0;
+function restartPaused(s, ms) {
+  clearTimeout(nRestartT);
+  nPauseUntil = Date.now() + ms; // nici „stopped” care vine imediat după oprire nu are voie să pornească mai devreme
+  Promise.resolve().then(() => P("SpeechRecognition").stop()).catch(() => {});
+  scheduleBegin(ms);
+}
+// v5.3: la prima pornire, recunoașterea se oprea imediat cu o eroare, iar repornirea aproape instantă (0,25 s)
+// făcea o buclă de bipuri fără să asculte. Acum: dacă eroarea vine la mai puțin de 1,5 s de la pornire, așteptăm
+// tot mai mult (0,8 → 1,5 → 2,5 → 3,5 s) între încercări; după 5 erori la rând ne oprim și îți spunem.
 function onListenError(code, msg) {
   clearTimeout(nSpeakT);
-  if (code === 6 || code === 7) { scheduleBegin(250); return; }            // liniște / nimic înțeles: ascultăm din nou
-  if (code === 8 || code === 5 || code === 11) { scheduleBegin(600); return; } // ocupat: mai încercăm puțin mai târziu
   if (code === 9) { stopNative(false); nPermOk = false; setStatus("🚫 Lipsește permisiunea Microfon: Settings → Apps → Planner → Permissions → Microphone → Allow only while using the app."); return; }
-  if (code === 3) { scheduleBegin(800); return; }
+  const quick = Date.now() - nBeginAt < 1500 && !nHeardSinceBegin();
+  if ([3, 5, 6, 7, 8, 11].includes(code)) {
+    if (!quick && (code === 6 || code === 7)) { nQuick = 0; scheduleBegin(300); return; } // liniște după ce a ascultat normal
+    nQuick++;
+    if (nQuick > 5) {
+      stopNative(false);
+      setStatus("⚠️ Microfonul nu a pornit corect (eroare " + code + "). Apasă din nou 🎤. Dacă se repetă: ⚙️ Setări → 🎤 Dictare → „🔎 Jurnal microfon” și trimite-mi o poză.");
+      return;
+    }
+    const wait = [800, 800, 1500, 2500, 3500, 3500][nQuick] || 3500;
+    nLog(`eroare rapidă ${code} (#${nQuick}) → pauză ${wait / 1000} s`);
+    restartPaused(nSession, wait);
+    return;
+  }
   // rețea / limbă: fără internet și fără româna offline pe telefon
   if ([1, 2, 4, 10, 12, 13].includes(code)) {
     nNetErr++;
@@ -3150,11 +3176,18 @@ async function startNativeInner() {
   setStatus("⏳ Pornesc microfonul…");
   dbg("");
   clearInterval(nWatch); nWatch = setInterval(nWatchdog, 1000);
-  nNetErr = 0;
+  nNetErr = 0; nQuick = 0; nSpeakRestarted = false; nPauseUntil = 0;
   nLog("— Start apăsat" + (nCold ? " (prima pornire)" : "") + (navigator.onLine ? "" : " · FĂRĂ INTERNET"));
   if (!navigator.onLine) dbg("📴 Fără internet: dictez cu româna offline de pe telefon (dacă e descărcată).");
   // pluginul închide singur sesiunea veche înainte de una nouă: pornim imediat, fără opriri și pauze în plus
   const s = nSession;
+  // v5.3: prima pornire de la deschiderea aplicației: întâi o oprire „de curățare” și o pauză scurtă
+  // (fără bip), exact ca un Stop înainte de Start
+  if (nBegins === 0) {
+    try { await withTimeout(Promise.resolve(SRp.stop()), 400); } catch (e) {}
+    await new Promise(r => setTimeout(r, 500));
+    if (!nListening || s !== nSession) return;
+  }
   await nativeBegin(s);
   // v5.2: fără repornirea automată fixă de la prima pornire (făcea un „bip” în plus de fiecare dată).
   // Dacă vorbești și nu apare niciun cuvânt, regula din onListenState repornește oricum după 2,5 s.
@@ -3407,7 +3440,7 @@ function renderSettings() {
   if (isNative) gcRenderCals(); else bkRender();
   syncRender(); syncEnsure();
 }
-const APP_VER = "v5.2 · 24.11.2026";
+const APP_VER = "v5.3 · 24.11.2026";
 async function sndChanged() {
   lsSetRaw("sndAlarm", byId("sndAlarm").value);
   lsSetRaw("sndLen", byId("sndLen").value);
@@ -4491,6 +4524,11 @@ async function wipeLocalData() {
 //  La fiecare versiune nouă se adaugă un rând SUS în CHANGELOG.
 // ====================================================================
 const CHANGELOG = [
+  ["v5.3", "24.11.2026", [
+    "🎤 Reparat: la prima pornire după deschiderea aplicației se auzeau bipuri încontinuu și nu se înregistra nimic. Recunoașterea Google se oprea imediat cu o eroare, iar aplicația o repornea aproape instant, în buclă.",
+    "Acum: la prima pornire se face întâi o oprire „de curățare” și o pauză scurtă (ca Stop + Start-ul manual); dacă tot se oprește imediat, aplicația așteaptă tot mai mult între încercări (0,8 → 3,5 s), iar după 5 încercări nereușite se oprește și îți spune.",
+    "Repornirea „vorbești, dar nu apare text” se face cel mult o dată pe dictare (bipul repornirii putea fi luat drept vorbire)."
+  ]],
   ["v5.2", "24.11.2026", [
     "🗣️ „… cu textul: …” / „… cu mesajul …”: tot ce urmează devine textul memento-ului sau al alarmei, exact cum l-ai spus (merge și cu „două puncte” rostit). Ce spui înainte (când, alarmă sau memento) e doar comanda. Ex.: „Fă un test, în 5 minute să sune o alarmă cu textul: test 2” → alarmă peste 5 minute „Test 2”.",
     "Dacă spui ora după text („alarmă cu textul dentist mâine la 10”), merge ca înainte.",
