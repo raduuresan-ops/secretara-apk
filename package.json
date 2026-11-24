@@ -4,7 +4,7 @@
   "private": true,
   "description": "Secretara - memento-uri vocale cu alarme native",
   "dependencies": {
-    "@capacitor-community/speech-recognition": "^7.0.0",
+    "@capacitor-community/speech-recognition": "7.0.1",
     "@capgo/capacitor-updater": "7.53.0",
     "@ebarooni/capacitor-calendar": "7.5.0",
     "@capacitor-community/text-to-speech": "^6.1.0",

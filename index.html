@@ -455,9 +455,13 @@ body.native #ptr{top:42px}
         <option value="60">după 1 minut de liniște</option>
       </select>
       <p id="dictInfo" class="calHint">Pentru liste lungi: spune „virgulă” între elemente și nu face pauze prea lungi; la fiecare pauză telefonul repornește singur microfonul (durează sub o secundă).</p>
+      <button onclick="micLogToggle()">🔎 Jurnal microfon (dacă nu pornește)</button>
+      <pre id="micLog" class="calHint" hidden style="white-space:pre-wrap;max-height:240px;overflow:auto;background:#11141c;padding:8px;border-radius:8px"></pre>
       <button id="btnSnap" onclick="toggleSnap()"></button>
       <b class="sub">🌐 Româna offline (dictare fără internet)</b>
-      <p class="calHint">Descarcă pachetul de limbă română pentru recunoașterea vocală direct pe telefon. Cu el, dictarea merge și fără internet. Necesită Android 13 sau mai nou. Dacă descărcarea directă nu merge, folosește „Setări voce Google” → Recunoaștere vocală offline → Română.</p>
+      <p class="calHint">Ca să poți dicta <b>fără internet</b>, telefonul trebuie să aibă pachetul de limbă română descărcat (o singură dată, cu internet, cam 40–80 MB). Fără internet, Planner cere singur recunoașterea pe telefon. <b>Pasul principal:</b> „⚙️ Setări voce Google” → Offline speech recognition → All → <b>Română</b> → Download. „📥 Descarcă româna offline” instalează în plus pachetul încorporat al telefonului (Android 13+).</p>
+      <p class="calHint"><b>Samsung:</b> Google nu are româna offline pe toate telefoanele. Atunci, fără internet, atinge căsuța de text și folosește <b>🎤 de pe tastatura Samsung</b> (Settings → caută „voice input” → Samsung Keyboard → <b>Samsung voice input</b>; pachetul „Romanian” din Language packs să fie instalat), apoi „🪄 Salvează”. Corecturile din 📖 Dicționar se aplică și aici.</p>
+      <p class="calHint">Restul aplicației merge oricum fără internet: ce adaugi se salvează în telefon, alarmele sună, iar sincronizarea (alte dispozitive, PC, Google Calendar) se face singură când revine internetul.</p>
       <button onclick="offlineCheck()">🔍 Verifică</button>
       <button class="doneBtn" onclick="offlineDownload()">📥 Descarcă româna offline</button>
       <button onclick="offlineSettings()">⚙️ Setări voce Google</button>
@@ -2925,12 +2929,14 @@ async function nativeBegin(sess) {
   if (!nListening || sess !== nSession) return;
   commitPartial();
   nLastEvt = Date.now();
+  nBegins++;
   try {
     await P("SpeechRecognition").start({ language: "ro-RO", maxResults: 5, partialResults: true, popup: false });
     // v4.9: pluginul trimite „started” abia când începi să vorbești, nu când microfonul e gata.
     // Înainte, ecranul rămânea pe „Pornesc microfonul… așteaptă” până vorbeai → părea că nu pornește.
     // Acum: imediat ce pornirea a reușit, arătăm „Ascult… vorbește” (+ o vibrație scurtă la prima pornire).
     if (!nListening || sess !== nSession) return;
+    nLog("pornit (încercarea " + nBegins + ")");
     nFails = 0;
     if (!/^🎙️/.test(byId("status").textContent)) {
       setStatus("🎙️ Ascult… vorbește");
@@ -2939,6 +2945,7 @@ async function nativeBegin(sess) {
     dbg("");
   } catch (e) {
     if (!nListening || sess !== nSession) return;
+    nLog("eroare la pornire: " + errMsg(e));
     if (/permi/i.test(errMsg(e))) nPermOk = false; // permisiunea a fost retrasă: o verificăm din nou data viitoare
     nFails++;
     if (nFails > 6) { stopNative(false); setStatus("⚠️ Microfonul nu pornește: " + errMsg(e)); return; }
@@ -2947,7 +2954,114 @@ async function nativeBegin(sess) {
     scheduleBegin(500);
   }
 }
-let nReadyBuzz = false;
+let nReadyBuzz = false, nBegins = 0;
+// ---------- v5.0: jurnal microfon (⚙️ Setări → 🎤 Dictare → 🔎 Jurnal microfon), ca să vedem ce se întâmplă pe telefon ----------
+const nLogArr = [];
+function nLog(t) {
+  const d = new Date();
+  nLogArr.push(`${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, "0").slice(0, 1)} ${t}`);
+  if (nLogArr.length > 60) nLogArr.shift();
+  const b = byId("micLog"); if (b && !b.hidden) b.textContent = nLogArr.slice().reverse().join("\n");
+}
+function micLogToggle() {
+  const b = byId("micLog"); b.hidden = !b.hidden;
+  if (!b.hidden) b.textContent = nLogArr.length ? nLogArr.slice().reverse().join("\n") : "(gol: apasă 🎤 și vorbește, apoi revino aici)";
+}
+// ---------- v5.0: pregătirea microfonului ----------
+// Prima pornire după deschiderea aplicației nu prindea nimic (merge abia după Stop + Start).
+// 1) ascultătorii și permisiunea se pregătesc imediat la deschiderea aplicației (nu la prima apăsare);
+// 2) la prima pornire (sau după ce aplicația a stat în fundal) se face automat „Stop + Start” după 0,8 s;
+// 3) dacă începi să vorbești și în 2,5 s nu apare niciun cuvânt, microfonul se repornește singur.
+let nSetupP = null, nCold = true, nHiddenAt = 0;
+function nSetup() {
+  if (nSetupP) return nSetupP;
+  nSetupP = (async () => {
+    const SRp = P("SpeechRecognition"); if (!SRp) return false;
+    if (!nListenersSet) {
+      nListenersSet = true;
+      const h = [
+        SRp.addListener("partialResults", onPartial),
+        SRp.addListener("listeningState", onListenState)
+      ];
+      try { await Promise.all(h); } catch (e) {}
+      nLog("ascultători pregătiți");
+    }
+    if (!nPermOk) {
+      try {
+        const perm = await SRp.checkPermissions();
+        if (perm.speechRecognition === "granted") { const av = await SRp.available(); if (av.available) nPermOk = true; }
+      } catch (e) {}
+    }
+    return true;
+  })();
+  return nSetupP;
+}
+let nSpeakT = null;
+function onPartial(d) {
+  if (!nListening || !d || !d.matches || !d.matches[0]) return;
+  if (!nHeard) nLog("primul text auzit");
+  clearTimeout(nSpeakT);
+  nFails = 0; nKicks = 0; nHeard = true; nLastEvt = Date.now(); nLastHeard = nLastEvt;
+  const m = pickBest(d.matches, nKeys);
+  // rezultatul final al frazei precedente, sosit după ce am salvat-o: îl înlocuim (e mai corect), nu-l dublăm
+  if (nAfterCommit && nSegs.length && Date.now() - nCommitAt < 1500) nSegs[nSegs.length - 1] = m.trim();
+  else { nAfterCommit = false; nPartial = m; }
+  dbg("auzit: " + m.slice(-60));
+  byId("textBox").value = nText();
+  if (STOPRE.test(normEq(byId("textBox").value))) stopNative(true);
+}
+function onListenState(d) {
+  if (!d || !nListening) return;
+  nLastEvt = Date.now();
+  nLog("semnal: " + d.status + (d.status === "error" ? ` ${d.code} (${d.message || ""})` : ""));
+  if (d.status === "started") { // = ai început să vorbești
+    nAfterCommit = false; nFails = 0;
+    if (!/^🎙️/.test(byId("status").textContent)) setStatus("🎙️ Ascult… vorbește");
+    // vorbești, dar nu apare niciun cuvânt în 2,5 s → repornim (ca un Stop + Start)
+    const s = nSession, heardAt = nLastHeard;
+    clearTimeout(nSpeakT);
+    nSpeakT = setTimeout(() => {
+      if (nListening && s === nSession && nLastHeard === heardAt) { nLog("vorbești, dar nu vine text → repornesc"); nativeBegin(s); }
+    }, 2500);
+  }
+  else if (d.status === "stopped") {
+    clearTimeout(nSpeakT);
+    if (STOPRE.test(normEq(nText()))) { stopNative(true); return; }
+    scheduleBegin(300); // lăsăm timp rezultatului final să sosească, apoi repornim
+  }
+  else if (d.status === "error") onListenError(+d.code, d.message);
+}
+// v5.1: erorile recunoașterii ajung acum în aplicație (APK nou). Codurile Android:
+// 1 timeout rețea, 2 rețea, 3 audio, 4 server, 5 client, 6 liniște, 7 nimic recunoscut, 8 ocupat, 9 permisiuni,
+// 10 prea multe cereri, 11 server deconectat, 12 limbă nesuportată, 13 limba nu e pe telefon
+let nNetErr = 0;
+function onListenError(code, msg) {
+  clearTimeout(nSpeakT);
+  if (code === 6 || code === 7) { scheduleBegin(250); return; }            // liniște / nimic înțeles: ascultăm din nou
+  if (code === 8 || code === 5 || code === 11) { scheduleBegin(600); return; } // ocupat: mai încercăm puțin mai târziu
+  if (code === 9) { stopNative(false); nPermOk = false; setStatus("🚫 Lipsește permisiunea Microfon: Settings → Apps → Planner → Permissions → Microphone → Allow only while using the app."); return; }
+  if (code === 3) { scheduleBegin(800); return; }
+  // rețea / limbă: fără internet și fără româna offline pe telefon
+  if ([1, 2, 4, 10, 12, 13].includes(code)) {
+    nNetErr++;
+    if (nNetErr < 2 && navigator.onLine) { scheduleBegin(700); return; }
+    stopNative(false);
+    const off = !navigator.onLine || code === 1 || code === 2 || code === 13;
+    setStatus(off ? "📴 Fără internet: 🎤 din Planner (Google) nu are româna offline. Atinge căsuța de text și folosește 🎤 de pe tastatura Samsung, apoi „Salvează”."
+                  : "⚠️ Recunoașterea vocală a dat eroare: " + (msg || code) + ". Mai încearcă o dată.");
+    if (off) flash("📴 Fără internet, dictează cu microfonul de pe tastatura Samsung: atinge căsuța de text de mai sus → 🎤 de pe tastatură → vorbește → „🪄 Salvează”. Restul aplicației merge și fără internet: ce scrii se salvează, alarmele sună, iar sincronizarea se face singură când revine internetul.", "warnbox", [
+      el("button", { class: "doneBtn", text: "⌨️ Scriu / dictez cu tastatura", onclick: () => { byId("lastMem").replaceChildren(); byId("textBox").focus(); } }),
+      el("button", { text: "📥 Verifică româna offline", onclick: () => { openView("settings"); const g = document.querySelector('details[data-g="dict"]'); if (g) g.open = true; offlineCheck(); } })
+    ]);
+  }
+}
+window.addEventListener("offline", () => { if (nListening) nLog("internetul a căzut (dictez offline, dacă româna offline e pe telefon)"); });
+window.addEventListener("online", () => { nLog("internetul a revenit"); try { syncNow(); } catch (e) {} });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) nHiddenAt = Date.now();
+  else if (nHiddenAt && Date.now() - nHiddenAt > 15000) nCold = true; // după fundal, prima pornire e iar „rece”
+});
+if (isNative) setTimeout(nSetup, 1200);
 // paznic: dacă în 7 secunde nu vine niciun semnal de la recunoaștere, repornim microfonul
 let nStartAt = 0, nLastHeard = 0;
 const mmss = ms => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${pad2(s % 60)}`; };
@@ -2959,10 +3073,12 @@ function nWatchdog() {
   if (silS && now - (nLastHeard || nStartAt) > silS * 1000) { stopNative(false); setStatus(`⏹️ Oprit după ${silS} s de liniște. Verifică textul și salvează.`); return; }
   const st = byId("status").textContent;
   if (/^🎙️/.test(st)) setStatus("🎙️ Ascult… " + mmss(now - nStartAt) + (maxM ? ` / ${maxM}:00` : ""));
-  // Google oprește singur ascultarea după ~5 s de liniște, fără să ne anunțe: o repornim discret (fără mesaje pe ecran)
-  if (Date.now() - nLastEvt < 6000) return;
+  // Google oprește singur ascultarea după ~5 s de liniște, fără să ne anunțe: o repornim discret (fără mesaje pe ecran).
+  // Până auzim primul cuvânt repornim mai repede (4 s), ca să nu aștepți degeaba.
+  if (Date.now() - nLastEvt < (nHeard ? 6000 : 4000)) return;
   nKicks++;
-  if (nKicks > 9 && !nHeard) {
+  nLog("niciun semnal de " + (nHeard ? 6 : 4) + " s → repornesc");
+  if (nKicks > 14 && !nHeard) {
     stopNative(false);
     setStatus("⚠️ Nu am auzit nimic. Apasă din nou 🎤 și vorbește. Dacă tot nu merge: ⚙️ Setări → 🎤 Dictare → Recunoaștere vocală Google.");
     return;
@@ -2973,44 +3089,26 @@ function nWatchdog() {
 // Pornire rapidă: permisiunea și disponibilitatea se verifică o singură dată (nu la fiecare apăsare),
 // iar „curățarea” unei sesiuni vechi se face doar dacă ai oprit microfonul de foarte puțin timp.
 let nPermOk = false, nLastStop = 0;
+let nStarting = false; // o a doua apăsare cât încă pornește nu mai pornește încă o dată
 async function startNative() {
+  if (nStarting) return;
+  nStarting = true;
+  try { await startNativeInner(); } finally { nStarting = false; }
+}
+async function startNativeInner() {
   const SRp = P("SpeechRecognition");
   if (!SRp) { setStatus("⚠️ Pluginul de voce nu e încărcat. Reinstalează aplicația."); return; }
+  setRecUi(true); setStatus("⏳ Pornesc microfonul…");
+  await nSetup();
   if (!nPermOk) {
     try {
       let perm = await SRp.checkPermissions();
       if (perm.speechRecognition !== "granted") perm = await SRp.requestPermissions();
-      if (perm.speechRecognition !== "granted") { setStatus("🚫 Microfon refuzat. Permite-l din Setări → Aplicații → Secretara → Permisiuni → Microfon."); return; }
+      if (perm.speechRecognition !== "granted") { setRecUi(false); setStatus("🚫 Microfon refuzat. Permite-l din Settings → Apps → Planner → Permissions → Microphone → Allow only while using the app."); return; }
       const av = await SRp.available();
-      if (!av.available) { setStatus("⚠️ Recunoașterea vocală nu e disponibilă. Actualizează aplicația Google / Servicii vocale."); return; }
+      if (!av.available) { setRecUi(false); setStatus("⚠️ Recunoașterea vocală nu e disponibilă. Actualizează aplicația Google / Servicii vocale."); return; }
       nPermOk = true;
-    } catch (e) { setStatus("⚠️ " + errMsg(e)); return; }
-  }
-  if (!nListenersSet) {
-    nListenersSet = true;
-    SRp.addListener("partialResults", d => {
-      if (!nListening || !d || !d.matches || !d.matches[0]) return;
-      nFails = 0; nKicks = 0; nHeard = true; nLastEvt = Date.now(); nLastHeard = nLastEvt;
-      const m = pickBest(d.matches, nKeys);
-      // rezultatul final al frazei precedente, sosit după ce am salvat-o: îl înlocuim (e mai corect), nu-l dublăm
-      if (nAfterCommit && nSegs.length && Date.now() - nCommitAt < 1500) nSegs[nSegs.length - 1] = m.trim();
-      else { nAfterCommit = false; nPartial = m; }
-      dbg("auzit: " + m.slice(-60));
-      byId("textBox").value = nText();
-      if (STOPRE.test(normEq(byId("textBox").value))) stopNative(true);
-    });
-    SRp.addListener("listeningState", d => {
-      if (!d || !nListening) return;
-      nLastEvt = Date.now();
-      if (d.status === "started") { // = ai început să vorbești
-        nAfterCommit = false; nFails = 0;
-        if (!/^🎙️/.test(byId("status").textContent)) setStatus("🎙️ Ascult… vorbește");
-      }
-      else if (d.status === "stopped") {
-        if (STOPRE.test(normEq(nText()))) { stopNative(true); return; }
-        scheduleBegin(300); // lăsăm timp rezultatului final să sosească, apoi repornim
-      }
-    });
+    } catch (e) { setRecUi(false); setStatus("⚠️ " + errMsg(e)); return; }
   }
   nSession++;
   clearTimeout(nRestartT);
@@ -3021,8 +3119,18 @@ async function startNative() {
   setStatus("⏳ Pornesc microfonul…");
   dbg("");
   clearInterval(nWatch); nWatch = setInterval(nWatchdog, 1000);
+  nNetErr = 0;
+  nLog("— Start apăsat" + (nCold ? " (prima pornire)" : "") + (navigator.onLine ? "" : " · FĂRĂ INTERNET"));
+  if (!navigator.onLine) dbg("📴 Fără internet: dictez cu româna offline de pe telefon (dacă e descărcată).");
   // pluginul închide singur sesiunea veche înainte de una nouă: pornim imediat, fără opriri și pauze în plus
-  nativeBegin(nSession);
+  const s = nSession;
+  await nativeBegin(s);
+  // prima pornire după deschiderea aplicației (sau după fundal): facem singuri „Stop + Start” după 0,8 s,
+  // exact ce trebuia să faci manual. Dacă între timp ai început deja să vorbești și apare text, nu mai repornim.
+  if (nCold) {
+    nCold = false;
+    setTimeout(() => { if (nListening && s === nSession && !nHeard) { nLog("prima pornire → repornesc automat"); nativeBegin(s); } }, 800);
+  }
 }
 function stopPluginSafely() {
   const s = nSession;
@@ -3034,7 +3142,8 @@ function stopPluginSafely() {
 function stopNative(auto) {
   if (!nListening) return;
   nListening = false; nLastStop = Date.now();
-  clearInterval(nWatch); clearTimeout(nRestartT);
+  nLog("— Stop" + (auto ? " (din voce: gata / stop)" : ""));
+  clearInterval(nWatch); clearTimeout(nRestartT); clearTimeout(nSpeakT);
   setRecUi(false); dbg("");
   commitPartial();
   const t = fixText(stripStop(nText()));
@@ -3090,10 +3199,11 @@ function webStop(auto) {
 }
 
 byId("btnRecord").onclick = () => {
-  unlockAudio();
   if (isNative) { nListening ? stopNative(false) : startNative(); }
-  else webToggle();
+  else { unlockAudio(); webToggle(); }
 };
+// pe telefon pornim partea de sunet devreme (la deschidere), ca să nu se pornească abia odată cu microfonul
+if (isNative) setTimeout(unlockAudio, 1500);
 
 // ====================================================================
 //  Calendar
@@ -3269,7 +3379,7 @@ function renderSettings() {
   if (isNative) gcRenderCals(); else bkRender();
   syncRender(); syncEnsure();
 }
-const APP_VER = "v4.9 · 24.11.2026";
+const APP_VER = "v5.1 · 24.11.2026";
 async function sndChanged() {
   lsSetRaw("sndAlarm", byId("sndAlarm").value);
   lsSetRaw("sndLen", byId("sndLen").value);
@@ -3444,7 +3554,9 @@ function unlockAudio() {
   if (!remAC) { try { remAC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
   if (remAC && remAC.state === "suspended") remAC.resume();
 }
-document.addEventListener("pointerdown", unlockAudio);
+// v5.0: NU pornim sunetul când apeși 🎤: pornirea sunetului (prima dată) lua „focusul audio” exact când pornea
+// microfonul, iar prima dictare nu prindea nimic. Sunetul se pornește la orice altă atingere sau când chiar e nevoie de el.
+document.addEventListener("pointerdown", e => { if (!(e.target && e.target.closest && e.target.closest("#btnRecord"))) unlockAudio(); });
 function remBeep(f, d, vol) {
   if (!remAC) return;
   const o = remAC.createOscillator(), g = remAC.createGain(), t0 = remAC.currentTime, v = vol || 0.3;
@@ -4351,6 +4463,18 @@ async function wipeLocalData() {
 //  La fiecare versiune nouă se adaugă un rând SUS în CHANGELOG.
 // ====================================================================
 const CHANGELOG = [
+  ["v5.1", "24.11.2026", [
+    "📴 Dictare fără internet: când nu ai internet, Planner cere recunoașterea vocală direct pe telefon. Merge dacă româna offline e descărcată (o singură dată, cu internet): ⚙️ Setări → 🎤 Dictare → „⚙️ Setări voce Google” → Offline speech recognition → Română.",
+    "Dacă lipsește româna offline (pe Samsung S25, Google nu o oferă), aplicația îți spune clar asta (nu mai rămâne pe „Ascult…” fără să audă nimic) și te trimite la microfonul de pe tastatura Samsung: atingi căsuța de text → 🎤 de pe tastatură → vorbești → „🪄 Salvează”. Cu internet folosești în continuare 🎤 din Planner (Google).",
+    "Fără internet, restul merge ca de obicei: ce adaugi se salvează în telefon, alarmele sună, iar sincronizarea se face singură când revine internetul.",
+    "Cere o singură dată APK-ul nou (butonul „📲 Descarcă APK-ul nou”)."
+  ]],
+  ["v5.0", "24.11.2026", [
+    "🎤 Prima pornire a microfonului: microfonul se pregătește de la deschiderea aplicației, iar la prima apăsare pe 🎤 face singur „Stop + Start” după o secundă (ce trebuia să faci manual).",
+    "🎤 Sunetul aplicației (bipurile) nu mai pornește odată cu microfonul: la prima apăsare îi „fura” microfonului sunetul și dictarea nu prindea nimic.",
+    "🎤 Dacă începi să vorbești și în 2,5 secunde nu apare niciun cuvânt, microfonul se repornește singur. Până la primul cuvânt, repornirea după liniște e mai rapidă (4 s).",
+    "🔎 ⚙️ Setări → 🎤 Dictare → „Jurnal microfon”: arată pas cu pas ce s-a întâmplat la ultimele porniri (util dacă tot nu pornește)."
+  ]],
   ["v4.9", "24.11.2026", [
     "🎤 Microfonul: imediat ce pornește apare „🎙️ Ascult… vorbește” (+ o vibrație scurtă). Înainte, ecranul rămânea pe „Pornesc microfonul… așteaptă” până începeai să vorbești și părea că nu merge. Când taci câteva secunde, microfonul se repornește singur, fără mesaje.",
     "🗓️ Programe din voce: „începând de azi, la ora 8, din 2 în 2 zile, pentru următoarele 2 săptămâni, alarmă cu textul …”, „începând de azi, pentru următoarele 5 zile …”, „începând de săptămâna viitoare, săptămânal, vineri …”, „în fiecare luni și joi …”, „o zi da, o zi nu …”, „zilnic până pe 1 decembrie …”, „lunar pe 5, pentru următoarele 6 luni …”, „de 3 ori, la 2 zile o dată …”. Exemplele sunt în ❓ Ajutor.",

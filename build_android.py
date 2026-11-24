@@ -11,6 +11,8 @@ s = manifest.read_text(encoding="utf8")
 
 perms = [
     '<uses-permission android:name="android.permission.RECORD_AUDIO" />',
+    # dictarea fara internet: pluginul de voce verifica daca exista internet (vezi patch-ul de mai jos)
+    '<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />',
     '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />',
     '<uses-permission android:name="android.permission.USE_EXACT_ALARM" />',
     '<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />',
@@ -190,6 +192,43 @@ dr.mkdir(parents=True, exist_ok=True)
 </vector>
 ''', encoding="utf8")
 print("build_android.py: manifest, sunete (5 alarme x 3 durate + 2 memento) si icon adaugate")
+
+# ---------- pluginul de voce (@capacitor-community/speech-recognition 7.0.1): 2 imbunatatiri ----------
+# 1) fara internet cere recunoasterea pe telefon (EXTRA_PREFER_OFFLINE) -> merge cu pachetul de romana offline
+# 2) erorile recunoasterii (fara internet, fara limba offline, ocupat etc.) ajung in aplicatie ca listeningState "error"
+#    (pluginul original le pierdea dupa pornire, iar aplicatia afisa "Ascult..." fara sa auda nimic)
+srj = list(pathlib.Path("node_modules/@capacitor-community/speech-recognition/android").glob("**/SpeechRecognition.java"))
+if not srj:
+    print("::warning::Nu gasesc SpeechRecognition.java - dictarea fara internet NU e activata")
+else:
+    j = srj[0].read_text(encoding="utf8")
+    if "secretara-offline" not in j:
+        a1 = 'intent.putExtra("android.speech.extra.DICTATION_MODE", partialResults);'
+        p1 = a1 + '''
+        // secretara-offline: fara internet cerem recunoasterea pe telefon (pachetul de limba descarcat)
+        try {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager) bridge.getContext().getSystemService(android.content.Context.CONNECTIVITY_SERVICE);
+            android.net.NetworkCapabilities nc = cm != null ? cm.getNetworkCapabilities(cm.getActiveNetwork()) : null;
+            boolean online = nc != null && nc.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                && nc.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+            if (!online) intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
+        } catch (Exception ignored) {}'''
+        a2 = "String errorMssg = getErrorText(error);"
+        p2 = a2 + '''
+            // secretara-offline: trimitem eroarea si catre aplicatie
+            try {
+                JSObject ev = new JSObject();
+                ev.put("status", "error");
+                ev.put("code", error);
+                ev.put("message", errorMssg);
+                SpeechRecognition.this.notifyListeners(LISTENING_EVENT, ev);
+            } catch (Exception ignored) {}'''
+        ok1, ok2 = a1 in j, a2 in j
+        j = j.replace(a1, p1, 1).replace(a2, p2, 1)
+        srj[0].write_text(j, encoding="utf8")
+        print("build_android.py: plugin voce - offline " + ("OK" if ok1 else "NEGASIT") + ", erori " + ("OK" if ok2 else "NEGASIT"))
+        if not (ok1 and ok2):
+            print("::warning::Patch-ul pluginului de voce nu s-a aplicat complet (alta versiune a pluginului?)")
 
 if not EXTRAS:
     sys.exit(0)
