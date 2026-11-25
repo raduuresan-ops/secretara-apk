@@ -940,6 +940,11 @@ function parseCommand(raw, now = new Date(), defaultBase = null, noMark) {
   let text = o.replace(/\s+/g, " ").trim().replace(/^[\s,.:;!?-]+|[\s,.:;!?-]+$/g, "");
   if (!text) text = type === "alarm" ? "Alarmă" : raw.trim();
   text = text.charAt(0).toUpperCase() + text.slice(1);
+  // v5.5: „zi de naștere Ana pe 10 decembrie” → anual, chiar dacă n-ai spus „în fiecare an”
+  if (due && !repeat && relMs === null && typeof isBdayText === "function" && isBdayText(text)) {
+    repeat = { kind: "yearly" };
+    if (due <= now) due.setFullYear(due.getFullYear() + 1);
+  }
   return { type, due, text, hasTime, byKeyword, repeat: repeat ? repeat.kind : null, defaultTime: !!(due && relMs === null && !tm), before, fromDate,
     rel: relMs !== null, saidWeekend: /\b(sambata|duminica|weekend|week end)\b/.test(nOrig) };
 }
@@ -1415,7 +1420,7 @@ function inFolder(item, view) {
   const has = item.cat != null && folderById(item.cat);
   return s === "none" ? !has : item.cat === s;
 }
-function renderChips(view, kind, items) {
+function renderChips(view, kind, items, totalCount) {
   const box = byId("chips-" + view); if (!box) return;
   box.replaceChildren();
   const fs = foldersFor(kind);
@@ -1424,7 +1429,7 @@ function renderChips(view, kind, items) {
   const cnt = id => items.filter(x => id === "none" ? !(x.cat != null && folderById(x.cat)) : x.cat === id).length;
   const chip = (val, label) => el("button", { class: fSel[view] === val ? "on" : "", text: label,
     onclick: () => { fSel[view] = val; renderView(curView); } });
-  box.append(chip("", `Toate (${items.length})`));
+  box.append(chip("", `Toate (${totalCount != null ? totalCount : items.length})`));
   fs.forEach(f => box.append(chip(f.id, `📁 ${f.name} (${cnt(f.id)})`)));
   const nn = cnt("none"); if (nn) box.append(chip("none", `Fără folder (${nn})`));
 }
@@ -1520,7 +1525,7 @@ function renderView(v) {
 }
 function renderBadges() {
   byId("bTasks").textContent = tasksGet().length || "";
-  byId("bMem").textContent = remGet().filter(r => !r.done).length || "";
+  byId("bMem").textContent = remGet().filter(r => !r.done && !r.bday).length || ""; // fără zilele de naștere
 }
 function refresh() { renderBadges(); renderView(curView); }
 // ---------- tragi pagina în jos (când ești sus de tot) → reîmprospătare ----------
@@ -2189,7 +2194,16 @@ function onNotifAction(ev) {
 }
 
 // ---------- memento-uri ----------
+// v5.5: „Zi (de) naștere …” / „Aniversare …” = zi de naștere: anual, în 📁 Zile de naștere, nenumărată la Memento
+const BDAY_RE = /^\s*(?:🎂\s*)?(?:zi(?:ua)?\s+(?:de\s+)?nastere|aniversare|la\s+multi\s+ani)\b/;
+const isBdayText = t => BDAY_RE.test(normEq(String(t || "")));
 async function createReminder(text, due, type, repeat, cat, extra) {
+  if (isBdayText(text) && !(extra && extra.series) && !(extra && extra.grp)) {
+    repeat = "yearly";
+    const fo = folderEnsure("Zile de naștere", "mem").f;
+    extra = Object.assign({ bday: true, manual: true }, extra || {});
+    if (cat === undefined && fo) cat = fo.id;
+  }
   const id = uid();
   const r = Object.assign({ id, nid: (id % 1000000000) * 2, text, due, type, repeat: repeat || null, fired: false, done: false,
     cat: cat !== undefined ? cat : autoCat(text, "mem") }, extra || {});
@@ -2274,6 +2288,11 @@ function archiveExpired() {
 function remDone(id) {
   const l = remGet(); const r = l.find(x => x.id === id); if (!r) return;
   const now = Date.now();
+  if (r.bday) { // v5.5: „✔ Gata” la o zi de naștere = o muți direct la anul următor, fără Istoric
+    r.due = nextOcc(r.due, "yearly", Math.max(now, r.due)); r.fired = false; remSet(l);
+    cancelNative(r, true);
+    return;
+  }
   if (r.repeat) {
     // dacă apariția a fost deja trecută automat în istoric (a sunat), doar o marcăm ca făcută
     const h = remHistGet();
@@ -2405,7 +2424,7 @@ function remDelete(id, withSeries) {
 const REP_LABEL = { daily: "🔁 zilnic", weekly: "🔁 săptămânal", monthly: "🔁 lunar", yearly: "🔁 anual" };
 function reminderItem(r, seriesLeft) {
   const box = el("div", { class: "item", "data-rid": String(r.id) });
-  const txt = el("div", { class: "txt", text: (r.type === "alarm" ? "⏰ " : "🔔 ") + r.text });
+  const txt = el("div", { class: "txt", text: (r.bday ? "🎂 " : r.type === "alarm" ? "⏰ " : "🔔 ") + r.text });
   const all = remGet();
   const kids = r.series ? 0 : all.filter(x => x.series === r.id).length;
   const grpN = r.grp ? all.filter(x => x.grp === r.grp).length : 0;
@@ -2467,8 +2486,11 @@ function renderMem() {
   const all = remGet();
   const u = byId("memList"); u.replaceChildren();
   const every = all.filter(r => !r.done).sort((a, b) => a.due - b.due);
-  renderChips("mem", "mem", every);
-  const vis = every.filter(r => inFolder(r, "mem"));
+  // v5.5: zilele de naștere nu se numără și nu apar la Memento; le vezi doar în 📁 Zile de naștere (și în Calendar) sau la căutare
+  renderChips("mem", "mem", every, every.filter(r => !r.bday).length);
+  const fw0 = searchWords(byId("memSearch").value);
+  const bdayOk = r => !r.bday || (fSel.mem && fSel.mem !== "none" && r.cat === fSel.mem) || fw0.length;
+  const vis = every.filter(r => inFolder(r, "mem") && bdayOk(r));
   // din fiecare serie zilnică arătăm doar următoarea zi (restul se văd în Calendar)
   const seen = new Set(), up = [];
   vis.forEach(r => { if (r.series) { if (seen.has(r.series)) return; seen.add(r.series); } up.push(r); });
@@ -2696,7 +2718,7 @@ function weekendAsk(p, type, force) {
   speak(`Pică ${wd === 6 ? "sâmbătă" : "duminică"}. Îl muți vineri, luni, sau rămâne?`);
 }
 async function createOne(p, type, force, weekendDone) {
-  if (!weekendDone && weekendAskOn() && p.due && !p.repeat && !p.rel && !p.saidWeekend && [0, 6].includes(p.due.getDay()) && p.due.getTime() > Date.now() + 5000) {
+  if (!weekendDone && weekendAskOn() && p.due && !p.repeat && !p.rel && !p.saidWeekend && !isBdayText(p.text) && [0, 6].includes(p.due.getDay()) && p.due.getTime() > Date.now() + 5000) {
     weekendAsk(p, type, force); return;
   }
   // ex. „azi alarmă X” fără oră, după ora implicită: nu programăm în trecut
@@ -3331,8 +3353,8 @@ function calRender() {
   const gl = showG ? gcGet() : [];
   // activitate pe zile: programate + istoric (memento-uri/alarme făcute sau care au sunat) + sarcini terminate + Google
   const act = {};
-  const add = (ms, kind) => { if (!ms) return; const k = dkey(new Date(ms)); (act[k] = act[k] || { al: 0, mem: 0, task: 0, g: 0 })[kind]++; };
-  list.forEach(r => add(r.due, r.type === "alarm" ? "al" : "mem"));
+  const add = (ms, kind) => { if (!ms) return; const k = dkey(new Date(ms)); (act[k] = act[k] || { al: 0, mem: 0, task: 0, g: 0, bd: 0 })[kind]++; };
+  list.forEach(r => add(r.due, r.bday ? "bd" : r.type === "alarm" ? "al" : "mem"));
   rh.forEach(h => add(h.due, h.type === "alarm" ? "al" : "mem"));
   th.forEach(h => add(taskDoneMs(h), "task"));
   gl.forEach(g => add(g.s, "g"));
@@ -3351,6 +3373,7 @@ function calRender() {
       const parts = [];
       if (a.al) parts.push("⏰" + a.al);
       if (a.mem) parts.push("🔔" + a.mem);
+      if (a.bd) parts.push("🎂" + a.bd);
       if (a.task) parts.push("✔" + a.task);
       if (a.g) parts.push("🗓️" + a.g);
       cell.append(el("small", { text: parts.join(" ") }));
@@ -3475,7 +3498,7 @@ function renderSettings() {
   if (isNative) gcRenderCals(); else bkRender();
   syncRender(); syncEnsure();
 }
-const APP_VER = "v5.4 · 25.11.2026";
+const APP_VER = "v5.5 · 25.11.2026";
 async function sndChanged() {
   lsSetRaw("sndAlarm", byId("sndAlarm").value);
   lsSetRaw("sndLen", byId("sndLen").value);
@@ -3750,7 +3773,12 @@ function remTick() {
   l.forEach(r => {
     if (!r.fired && !r.done && r.due <= now) {
       const late = now - r.due; ch = true;
-      if (r.repeat) {
+      if (r.bday) {
+        // v5.5: ziua de naștere rămâne în ziua ei (în Calendar) până la miezul nopții, fără să intre în Istoric;
+        // abia apoi se mută în anul următor (vezi mai jos) – o singură dată pe persoană în calendar
+        r.fired = true;
+        if (!isNative || late < 90000) fire.push(r);
+      } else if (r.repeat) {
         const shown = Object.assign({}, r);
         remToHist(shown, "expired", shown.due, `${r.id}@${shown.due}`); // apariția care a trecut intră în istoric
         r.due = nextOcc(r.due, r.repeat, now);
@@ -3760,6 +3788,8 @@ function remTick() {
         if (!isNative || late < 90000) fire.push(r);
       }
     }
+    // ziua de naștere a trecut (după miezul nopții) → aceeași dată, anul următor
+    if (r.bday && r.fired && now >= dayStart(r.due) + 86400000) { r.due = nextOcc(r.due, "yearly", now); r.fired = false; ch = true; }
   });
   if (ch) { remSet(l); fire.filter(notifOk).forEach(r => showRemAlert(r, now - r.due > 60000)); refresh(); }
 }
@@ -4559,6 +4589,12 @@ async function wipeLocalData() {
 //  La fiecare versiune nouă se adaugă un rând SUS în CHANGELOG.
 // ====================================================================
 const CHANGELOG = [
+  ["v5.5", "25.11.2026", [
+    "🎂 Zilele de naștere nu se mai numără la ⏰ Memento (nici pe tab, nici la „Toate”, nici în lista de 7 zile). Le vezi în 📁 Zile de naștere (cu numărul lor), în 📅 Calendar (🎂 pe zi) și la căutare.",
+    "Fiecare persoană are o singură dată în calendar: ziua rămâne vizibilă până la miezul nopții, apoi se mută singură la aceeași dată, anul următor (fără să încarce Istoricul).",
+    "📥 Un fișier nou de zile de naștere actualizează lista: adaugă persoanele noi, corectează datele schimbate și îți arată pe cele care nu mai sunt în fișier, ca să confirmi ștergerea. Cele adăugate manual / din voce rămân.",
+    "🗣️ „zi de naștere Maria pe 7 martie” (sau „aniversare …”) se pune automat anual, în 📁 Zile de naștere, fără întrebarea de weekend."
+  ]],
   ["v5.4", "25.11.2026", [
     "📅 Dacă un memento / o alarmă pică sâmbătă sau duminică (ex. „peste 20 de zile …”), aplicația întreabă: ⬅️ vineri, ➡️ luni sau ✔ rămâne. Nu întreabă când spui tu „sâmbătă” / „duminică”, la „peste 2 ore” și la cele repetitive. Se poate opri din ⚙️ Setări → 🔔 Alarme și notificări.",
     "🔁 Repetare anuală: „în fiecare an pe 10 decembrie …” sau din ✏️ Edit / Calendar → „🔁 Anual”.",
@@ -4704,7 +4740,8 @@ function importFile(ev) {
       // v5.4: fișier cu zile de naștere (doar nume, zi, lună) → memento-uri anuale în 📁 Zile de naștere
       if (d && Array.isArray(d.birthdays)) {
         const r = await importBirthdays(d.birthdays);
-        byId("setInfo").textContent = `🎂 Zile de naștere: ${r.added} adăugate` + (r.skipped ? `, ${r.skipped} existau deja` : "") + (r.bad ? `, ${r.bad} cu dată greșită (sărite)` : "") + ". Le vezi în 📅 Calendar și în ⏰ Memento → 📁 Zile de naștere.";
+        byId("setInfo").textContent = `🎂 Zile de naștere: ${r.added} adăugate` + (r.changed ? `, ${r.changed} cu data corectată` : "") + (r.skipped ? `, ${r.skipped} neschimbate` : "") +
+          (r.removed ? `, ${r.removed} șterse (nu mai erau în listă)` : "") + (r.bad ? `, ${r.bad} cu dată greșită (sărite)` : "") + ". Le vezi în 📅 Calendar și în ⏰ Memento → 📁 Zile de naștere.";
         return;
       }
       const n = applyBackup(d, false);
@@ -4715,27 +4752,44 @@ function importFile(ev) {
   rd.readAsText(f); ev.target.value = "";
 }
 // memento anual „Zi naștere Nume” la 09:00 în ziua respectivă, în fiecare an; nu dublează ce există deja
+// v5.5: importul e și „actualizare de listă”: adaugă persoanele noi, corectează datele schimbate, iar pe cele
+// importate anterior care nu mai sunt în fișier (plecări) le șterge doar după confirmare. Cele adăugate manual / din voce rămân.
 async function importBirthdays(list) {
   const fo = folderEnsure("Zile de naștere", "mem").f;
-  const all = remGet(), have = new Set(all.filter(r => r.repeat === "yearly").map(r => normEq(String(r.text))));
-  const now = Date.now(), base = (now - 2 * 86400000) * 10, made = [];
-  let skipped = 0, bad = 0;
+  let all = remGet();
+  const byText = new Map(all.filter(r => r.repeat === "yearly").map(r => [normEq(String(r.text)), r]));
+  const now = Date.now(), base = (now - 2 * 86400000) * 10, made = [], inFile = new Set(), touched = [];
+  let skipped = 0, bad = 0, changed = 0;
+  const nextDue = (d, m) => { let due = new Date(new Date(now).getFullYear(), m - 1, d, 9, 0, 0).getTime(); if (due < dayStart(now)) due = nextOcc(due, "yearly", now); return due; };
   list.forEach((b, i) => {
     const name = String(b.nume || b.name || "").replace(/\s+/g, " ").trim();
     const d = +(b.zi || b.day), m = +(b.luna || b.month);
     if (!name || !(d >= 1 && d <= 31 && m >= 1 && m <= 12)) { bad++; return; }
-    const text = `Zi naștere ${name}`;
-    if (have.has(normEq(text))) { skipped++; return; }
-    have.add(normEq(text));
-    let due = new Date(new Date(now).getFullYear(), m - 1, d, 9, 0, 0).getTime();
-    if (due <= now) due = nextOcc(due, "yearly", now);
+    const text = `Zi naștere ${name}`, key = normEq(text);
+    if (inFile.has(key)) return;
+    inFile.add(key);
+    const ex = byText.get(key);
+    if (ex) {
+      const od = new Date(ex.due);
+      if (od.getDate() === d && od.getMonth() === m - 1) { if (!ex.bday) { ex.bday = true; ex.cat = fo ? fo.id : ex.cat; changed++; } else skipped++; return; }
+      ex.due = nextDue(d, m); ex.fired = false; ex.bday = true; touched.push(ex); changed++; return;
+    }
     const id = base + i * 10;
-    made.push({ id, nid: (id % 1000000000) * 2, text, due, type: "popup", repeat: "yearly", fired: false, done: false, cat: fo ? fo.id : null, bday: true });
+    made.push({ id, nid: (id % 1000000000) * 2, text, due: nextDue(d, m), type: "popup", repeat: "yearly", fired: false, done: false, cat: fo ? fo.id : null, bday: true });
   });
-  if (made.length) { remSet(all.concat(made)); for (const r of made) await scheduleNative(r); }
+  // plecări: importate înainte, dar lipsă din fișierul nou
+  const gone = all.filter(r => r.bday && !r.manual && !inFile.has(normEq(String(r.text))));
+  let removed = 0;
+  if (gone.length && confirm(`Aceste ${gone.length} persoane nu mai sunt în fișierul nou:\n\n${gone.slice(0, 25).map(r => "• " + String(r.text).replace(/^Zi naștere /, "")).join("\n")}${gone.length > 25 ? "\n…" : ""}\n\nLe șterg din zilele de naștere?`)) {
+    gone.forEach(r => cancelNative(r));
+    const g = new Set(gone.map(r => r.id)); all = all.filter(r => !g.has(r.id)); removed = gone.length;
+  }
+  remSet(all.concat(made));
+  for (const r of touched) { await cancelNative(r); await scheduleNative(r); }
+  for (const r of made) await scheduleNative(r);
   if (fo) fSel.mem = fo.id;
   refresh();
-  return { added: made.length, skipped, bad };
+  return { added: made.length, skipped, bad, changed, removed };
 }
 
 // ====================================================================
