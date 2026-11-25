@@ -253,6 +253,7 @@ body.native #ptr{top:42px}
         <option value="daily">🔁 Zilnic</option>
         <option value="weekly">🔁 Săptămânal</option>
         <option value="monthly">🔁 Lunar</option>
+        <option value="yearly">🔁 Anual (ex. zi de naștere)</option>
       </select>
       <button class="doneBtn" onclick="addReminder()">➕ Adaugă memento</button>
       <p id="remMsg" class="calHint"></p>
@@ -354,6 +355,7 @@ body.native #ptr{top:42px}
       <p id="gaInfo" class="calHint"></p>
       <label class="lbl" for="defTime">Ora folosită când nu spui ora (ex. „vineri alarmă …”)</label>
       <input id="defTime" type="time" onchange="defTimeChanged()" />
+      <label class="chk"><input type="checkbox" id="weekendCb" onchange="localStorage.setItem('weekendAsk', this.checked ? '1' : '0')" /> 📅 Când un memento / o alarmă pică sâmbătă sau duminică, întreabă-mă dacă îl mut vineri sau luni</label>
       <div class="nativeOnly">
         <b class="sub">📱 Ca alarmele să sune sigur (Samsung)</b>
         <ol class="calHint" style="padding-left:18px;">
@@ -821,6 +823,8 @@ function parseCommand(raw, now = new Date(), defaultBase = null, noMark) {
     }
   } else if (take(/\bsaptamanal\b/)) {
     repeat = { kind: "weekly" };
+  } else if (take(/\b(?:anual|in\s+fiecare\s+an|o\s+data\s+pe\s+an|an\s+de\s+an)\b/)) {
+    repeat = { kind: "yearly" }; // v5.4: „în fiecare an pe 25 august …”
   }
 
   // 1) relativ: peste 30 de zile / peste 2 ore / peste o saptamana
@@ -918,6 +922,7 @@ function parseCommand(raw, now = new Date(), defaultBase = null, noMark) {
   if (due && repeat && relMs === null) {
     if (repeat.kind === "weekly" && due <= now) due.setDate(due.getDate() + 7);
     if (repeat.kind === "monthly" && due <= now) due.setMonth(due.getMonth() + 1);
+    if (repeat.kind === "yearly" && due <= now) due.setFullYear(due.getFullYear() + 1);
   }
 
   // tipul
@@ -935,7 +940,8 @@ function parseCommand(raw, now = new Date(), defaultBase = null, noMark) {
   let text = o.replace(/\s+/g, " ").trim().replace(/^[\s,.:;!?-]+|[\s,.:;!?-]+$/g, "");
   if (!text) text = type === "alarm" ? "Alarmă" : raw.trim();
   text = text.charAt(0).toUpperCase() + text.slice(1);
-  return { type, due, text, hasTime, byKeyword, repeat: repeat ? repeat.kind : null, defaultTime: !!(due && relMs === null && !tm), before, fromDate };
+  return { type, due, text, hasTime, byKeyword, repeat: repeat ? repeat.kind : null, defaultTime: !!(due && relMs === null && !tm), before, fromDate,
+    rel: relMs !== null, saidWeekend: /\b(sambata|duminica|weekend|week end)\b/.test(nOrig) };
 }
 // ora implicită când spui doar ziua („vineri alarmă …”): 10:00, modificabilă din Setări
 function defTimeHM() {
@@ -1167,6 +1173,7 @@ function nextOcc(dueMs, kind, nowMs) {
   while (d.getTime() <= nowMs && g++ < 4000) {
     if (kind === "daily") d.setDate(d.getDate() + 1);
     else if (kind === "weekly") d.setDate(d.getDate() + 7);
+    else if (kind === "yearly") d.setFullYear(d.getFullYear() + 1);
     else d.setMonth(d.getMonth() + 1);
   }
   return d.getTime();
@@ -2132,6 +2139,7 @@ async function scheduleNative(r, atOverride, nidOverride) {
       const on = { hour: d.getHours(), minute: d.getMinutes() };
       if (r.repeat === "weekly") on.weekday = d.getDay() + 1;
       if (r.repeat === "monthly") on.day = d.getDate();
+      if (r.repeat === "yearly") { on.month = d.getMonth() + 1; on.day = d.getDate(); } // v5.4: în fiecare an, aceeași dată
       schedule = { on, allowWhileIdle: true };
     } else schedule = { at: new Date(when), allowWhileIdle: true };
     const ch = mode === "silent" ? SILENT_CHANNEL : r.type === "alarm" ? alarmChannel() : memoChannel();
@@ -2394,7 +2402,7 @@ function remDelete(id, withSeries) {
   remSet(l.filter(x => x.id !== id && !(drop && x.series === id)));
   refresh();
 }
-const REP_LABEL = { daily: "🔁 zilnic", weekly: "🔁 săptămânal", monthly: "🔁 lunar" };
+const REP_LABEL = { daily: "🔁 zilnic", weekly: "🔁 săptămânal", monthly: "🔁 lunar", yearly: "🔁 anual" };
 function reminderItem(r, seriesLeft) {
   const box = el("div", { class: "item", "data-rid": String(r.id) });
   const txt = el("div", { class: "txt", text: (r.type === "alarm" ? "⏰ " : "🔔 ") + r.text });
@@ -2424,7 +2432,7 @@ function editReminder(r, box) {
   const tm = el("input", { type: "time" }); tm.value = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   const ty = el("select", {}, [el("option", { value: "alarm", text: "⏰ Alarmă" }), el("option", { value: "popup", text: "🔔 Memento" })]); ty.value = r.type;
   const rp = el("select", {}, [el("option", { value: "", text: "Fără repetare" }), el("option", { value: "daily", text: "🔁 Zilnic" }),
-    el("option", { value: "weekly", text: "🔁 Săptămânal" }), el("option", { value: "monthly", text: "🔁 Lunar" })]); rp.value = r.repeat || "";
+    el("option", { value: "weekly", text: "🔁 Săptămânal" }), el("option", { value: "monthly", text: "🔁 Lunar" }), el("option", { value: "yearly", text: "🔁 Anual" })]); rp.value = r.repeat || "";
   box.replaceChildren(
     el("b", { text: "✏️ Editează memento" }), t, dt, tm, ty, rp,
     el("div", { class: "row" }, [
@@ -2664,7 +2672,33 @@ function seriesDays(p, dueMs) {
   }
   return 0;
 }
-async function createOne(p, type, force) {
+// v5.4: dacă data pică sâmbătă sau duminică, întreabă: vineri / luni / păstrez.
+// Nu întreabă la „peste 2 ore / 20 de minute”, la cele repetitive și când ai spus tu „sâmbătă” / „duminică”.
+function weekendAskOn() { return localStorage.getItem("weekendAsk") !== "0"; }
+function weekendAsk(p, type, force) {
+  const d = p.due, wd = d.getDay();
+  const fri = new Date(d), mon = new Date(d);
+  fri.setDate(d.getDate() - (wd === 6 ? 1 : 2));
+  mon.setDate(d.getDate() + (wd === 6 ? 2 : 1));
+  const fmt = x => x.toLocaleDateString("ro-RO", { weekday: "long", day: "numeric", month: "long" });
+  const go = nd => { byId("lastMem").replaceChildren(); createOne(Object.assign({}, p, { due: nd }), type, force, true); };
+  const friOk = fri.getTime() > Date.now() + 5000;
+  flash(`📅 ${type === "alarm" ? "Alarma" : "Memento-ul"} „${p.text}” pică ${fmt(d)}. Îl muți?`, "warnbox", [
+    el("div", { class: "row" }, [
+      friOk ? el("button", { class: "doneBtn", text: "⬅️ Vineri, " + fri.toLocaleDateString("ro-RO", { day: "numeric", month: "short" }), onclick: () => go(fri) }) : "",
+      el("button", { class: "doneBtn", text: "➡️ Luni, " + mon.toLocaleDateString("ro-RO", { day: "numeric", month: "short" }), onclick: () => go(mon) }),
+      el("button", { text: "✔ Rămâne " + (wd === 6 ? "sâmbătă" : "duminică"), onclick: () => go(d) }),
+      el("button", { text: "✖ Anulează", onclick: () => { byId("lastMem").replaceChildren(); } })
+    ]),
+    el("small", { text: "Textul rămâne în căsuță până alegi. (Întrebarea se poate opri din ⚙️ Setări → 🔔 Alarme și notificări.)" })
+  ]);
+  if (navigator.vibrate) navigator.vibrate([40, 60, 40]);
+  speak(`Pică ${wd === 6 ? "sâmbătă" : "duminică"}. Îl muți vineri, luni, sau rămâne?`);
+}
+async function createOne(p, type, force, weekendDone) {
+  if (!weekendDone && weekendAskOn() && p.due && !p.repeat && !p.rel && !p.saidWeekend && [0, 6].includes(p.due.getDay()) && p.due.getTime() > Date.now() + 5000) {
+    weekendAsk(p, type, force); return;
+  }
   // ex. „azi alarmă X” fără oră, după ora implicită: nu programăm în trecut
   if (!p.repeat && p.due.getTime() <= Date.now() + 5000) {
     noDate(byId("textBox").value || p.text, p, type, `⚠️ Ora rezultată (${fmtDT(p.due.getTime())}) a trecut deja. Spune și ora (ex. „azi la 17 …”) sau alege data din calendar. Textul a rămas în căsuță.`);
@@ -2672,7 +2706,7 @@ async function createOne(p, type, force) {
   }
   if (!force) {
     const sims = remSimilar(p.text, p.due.getTime());
-    if (sims.length) { dupWarn([[p.text, p.due.getTime(), sims]], () => createOne(p, type, true)); return; }
+    if (sims.length) { dupWarn([[p.text, p.due.getTime(), sims]], () => createOne(p, type, true, true)); return; }
   }
   const r = await createReminder(p.text, p.due.getTime(), type, p.repeat);
   clearBox();
@@ -2687,7 +2721,7 @@ async function createOne(p, type, force) {
   showLast(r, notes.join(" "));
   openView("mem");
   confirmFx(false);
-  const rw = { daily: "zilnic", weekly: "săptămânal", monthly: "lunar" }[r.repeat];
+  const rw = { daily: "zilnic", weekly: "săptămânal", monthly: "lunar", yearly: "în fiecare an" }[r.repeat];
   speak(`Am programat ${r.type === "alarm" ? "alarma" : "memento-ul"} ${rw ? rw + ", începând din " : "pentru "}${spokenWhen(r.due)}. ${r.text}`);
 }
 function noDate(text, p, type, msg) {
@@ -3409,6 +3443,7 @@ function dictOptChanged() {
 }
 function renderSettings() {
   renderFolders();
+  { const w = byId("weekendCb"); if (w) w.checked = weekendAskOn(); }
   renderWa();
   byId("setInfo").textContent = isNative
     ? "Rulezi ca aplicație Android: alarmele sunt programate în telefon și sună și cu aplicația închisă."
@@ -3440,7 +3475,7 @@ function renderSettings() {
   if (isNative) gcRenderCals(); else bkRender();
   syncRender(); syncEnsure();
 }
-const APP_VER = "v5.3 · 24.11.2026";
+const APP_VER = "v5.4 · 25.11.2026";
 async function sndChanged() {
   lsSetRaw("sndAlarm", byId("sndAlarm").value);
   lsSetRaw("sndLen", byId("sndLen").value);
@@ -4524,6 +4559,11 @@ async function wipeLocalData() {
 //  La fiecare versiune nouă se adaugă un rând SUS în CHANGELOG.
 // ====================================================================
 const CHANGELOG = [
+  ["v5.4", "25.11.2026", [
+    "📅 Dacă un memento / o alarmă pică sâmbătă sau duminică (ex. „peste 20 de zile …”), aplicația întreabă: ⬅️ vineri, ➡️ luni sau ✔ rămâne. Nu întreabă când spui tu „sâmbătă” / „duminică”, la „peste 2 ore” și la cele repetitive. Se poate opri din ⚙️ Setări → 🔔 Alarme și notificări.",
+    "🔁 Repetare anuală: „în fiecare an pe 10 decembrie …” sau din ✏️ Edit / Calendar → „🔁 Anual”.",
+    "🎂 Import zile de naștere: ⚙️ Setări → ☁️ Sincronizare, actualizări și backup → 💾 Backup → „📥 Restaurează din fișier” cu fișierul de zile de naștere → câte un memento „Zi naștere Nume” la 09:00, în fiecare an, în 📁 Zile de naștere. Ce există deja nu se dublează."
+  ]],
   ["v5.3", "24.11.2026", [
     "🎤 Reparat: la prima pornire după deschiderea aplicației se auzeau bipuri încontinuu și nu se înregistra nimic. Recunoașterea Google se oprea imediat cu o eroare, iar aplicația o repornea aproape instant, în buclă.",
     "Acum: la prima pornire se face întâi o oprire „de curățare” și o pauză scurtă (ca Stop + Start-ul manual); dacă tot se oprește imediat, aplicația așteaptă tot mai mult între încercări (0,8 → 3,5 s), iar după 5 încercări nereușite se oprește și îți spune.",
@@ -4658,15 +4698,44 @@ function mergeKey(key, list) {
 function importFile(ev) {
   const f = ev.target.files && ev.target.files[0]; if (!f) return;
   const rd = new FileReader();
-  rd.onload = () => {
+  rd.onload = async () => {
     try {
       const d = JSON.parse(rd.result);
+      // v5.4: fișier cu zile de naștere (doar nume, zi, lună) → memento-uri anuale în 📁 Zile de naștere
+      if (d && Array.isArray(d.birthdays)) {
+        const r = await importBirthdays(d.birthdays);
+        byId("setInfo").textContent = `🎂 Zile de naștere: ${r.added} adăugate` + (r.skipped ? `, ${r.skipped} existau deja` : "") + (r.bad ? `, ${r.bad} cu dată greșită (sărite)` : "") + ". Le vezi în 📅 Calendar și în ⏰ Memento → 📁 Zile de naștere.";
+        return;
+      }
       const n = applyBackup(d, false);
       migrateReminders(); refresh(); syncNative();
       byId("setInfo").textContent = `Restaurat: ${n} elemente adăugate.`;
     } catch (e) { byId("setInfo").textContent = "Fișier invalid."; }
   };
   rd.readAsText(f); ev.target.value = "";
+}
+// memento anual „Zi naștere Nume” la 09:00 în ziua respectivă, în fiecare an; nu dublează ce există deja
+async function importBirthdays(list) {
+  const fo = folderEnsure("Zile de naștere", "mem").f;
+  const all = remGet(), have = new Set(all.filter(r => r.repeat === "yearly").map(r => normEq(String(r.text))));
+  const now = Date.now(), base = (now - 2 * 86400000) * 10, made = [];
+  let skipped = 0, bad = 0;
+  list.forEach((b, i) => {
+    const name = String(b.nume || b.name || "").replace(/\s+/g, " ").trim();
+    const d = +(b.zi || b.day), m = +(b.luna || b.month);
+    if (!name || !(d >= 1 && d <= 31 && m >= 1 && m <= 12)) { bad++; return; }
+    const text = `Zi naștere ${name}`;
+    if (have.has(normEq(text))) { skipped++; return; }
+    have.add(normEq(text));
+    let due = new Date(new Date(now).getFullYear(), m - 1, d, 9, 0, 0).getTime();
+    if (due <= now) due = nextOcc(due, "yearly", now);
+    const id = base + i * 10;
+    made.push({ id, nid: (id % 1000000000) * 2, text, due, type: "popup", repeat: "yearly", fired: false, done: false, cat: fo ? fo.id : null, bday: true });
+  });
+  if (made.length) { remSet(all.concat(made)); for (const r of made) await scheduleNative(r); }
+  if (fo) fSel.mem = fo.id;
+  refresh();
+  return { added: made.length, skipped, bad };
 }
 
 // ====================================================================
