@@ -2228,11 +2228,14 @@ function dupScore(a, b) {
   if (!A.length || !B.length) return 0;
   let m = 0;
   A.forEach(x => { if (B.some(y => x === y || (Math.min(x.length, y.length) >= 4 && (x.startsWith(y) || y.startsWith(x))))) m++; });
-  if (m < Math.min(2, A.length, B.length)) return 0;
+  // v5.6: cu un singur cuvânt comun („test”), e dublură doar dacă textele sunt identice („Test 2” = „test 2”, dar nu „pc test”)
+  if (m < 2) { const z = t => normEq(baseText(t)).replace(/[^a-z0-9]+/g, " ").trim(); return z(a) === z(b) ? 1 : 0; }
   return 2 * m / (A.length + B.length);
 }
 function remSimilar(text, due) {
-  return remGet().filter(r => !r.done && !r.series && Math.abs(r.due - due) <= DUP_DAYS * 86400000 && dupScore(text, r.text) >= 0.5)
+  // v5.6: doar cele care urmează să sune (nu cele care au sunat deja / au trecut) și fără zilele de naștere
+  const now = Date.now();
+  return remGet().filter(r => !r.done && !r.series && !r.fired && !r.bday && r.due > now && Math.abs(r.due - due) <= DUP_DAYS * 86400000 && dupScore(text, r.text) >= 0.5)
     .sort((a, b) => Math.abs(a.due - due) - Math.abs(b.due - due));
 }
 function dupDiff(a, b) {
@@ -2526,6 +2529,8 @@ function showLast(r, note) {
     el("div", { text: `✅ ${r.type === "alarm" ? "Alarmă setată" : "Memento setat"}: ${fmtDT(r.due)}${r.repeat ? " · " + REP_LABEL[r.repeat] : ""}` }),
     el("div", { class: "txt", text: r.text }, f ? [el("span", { class: "ftag", text: "📁 " + f.name })] : []),
     ...(note ? [el("small", { text: note })] : []),
+    // v5.6: pe PC, alarma ajunge pe telefon doar prin sincronizare (telefonul o programează când Planner e deschis acolo)
+    ...(!isNative && r.due - Date.now() < 30 * 60000 ? [el("small", { style: "display:block", text: "📱 Pe telefon sună doar după ce telefonul o primește: deschide o dată Planner pe telefon. Pentru alarme peste câteva minute, pune-le direct de pe telefon." })] : []),
     el("div", { class: "row" }, [
       el("button", { text: "+10 min", onclick: () => remShift(r.id, 10 * 60000) }),
       el("button", { text: "+1 oră", onclick: () => remShift(r.id, H) }),
@@ -3108,9 +3113,9 @@ function onListenState(d) {
     const s = nSession, heardAt = nLastHeard;
     clearTimeout(nSpeakT);
     // v5.3: o singură dată pe sesiune (altfel bipul propriei reporniri putea fi „auzit” ca vorbire → buclă de bipuri)
-    if (!nSpeakRestarted) nSpeakT = setTimeout(() => {
-      if (nListening && s === nSession && nLastHeard === heardAt && !nSpeakRestarted) { nSpeakRestarted = true; nLog("vorbești, dar nu vine text → repornesc (o dată)"); restartPaused(s, 900); }
-    }, 2500);
+    // v5.6: SCOASĂ repornirea „vorbești, dar nu vine text în 2,5 s”: pe telefon textul vine uneori mai târziu,
+    // iar repornirea tăia vorbirea (cuvinte fragmentate + bipuri). Google oprește singur la final; atunci repornim.
+    void s; void heardAt;
   }
   else if (d.status === "stopped") {
     clearTimeout(nSpeakT);
@@ -3147,7 +3152,8 @@ function onListenError(code, msg) {
       setStatus("⚠️ Microfonul nu a pornit corect (eroare " + code + "). Apasă din nou 🎤. Dacă se repetă: ⚙️ Setări → 🎤 Dictare → „🔎 Jurnal microfon” și trimite-mi o poză.");
       return;
     }
-    const wait = [800, 800, 1500, 2500, 3500, 3500][nQuick] || 3500;
+    // v5.6: prima reîncercare aproape imediat (0,15 s), ca să se piardă cât mai puțin din ce spui; abia apoi pauze
+    const wait = [150, 150, 800, 1500, 2500, 3500][nQuick] || 3500;
     nLog(`eroare rapidă ${code} (#${nQuick}) → pauză ${wait / 1000} s`);
     restartPaused(nSession, wait);
     return;
@@ -3498,7 +3504,7 @@ function renderSettings() {
   if (isNative) gcRenderCals(); else bkRender();
   syncRender(); syncEnsure();
 }
-const APP_VER = "v5.5 · 25.11.2026";
+const APP_VER = "v5.6 · 26.11.2026";
 async function sndChanged() {
   lsSetRaw("sndAlarm", byId("sndAlarm").value);
   lsSetRaw("sndLen", byId("sndLen").value);
@@ -3693,7 +3699,8 @@ function showToast(r, late) {
   let box = byId("toasts");
   if (!box) { box = el("div", { id: "toasts" }); document.body.append(box); }
   const isAl = r.type === "alarm", isG = !!r.google;
-  const card = el("div", { class: "toast" + (isAl ? " alarm" : "") + (isG ? " google" : "") });
+  if (r.id != null && box.querySelector(`.toast[data-rid="${r.id}"]`)) return; // v5.6: o singură dată
+  const card = el("div", { class: "toast" + (isAl ? " alarm" : "") + (isG ? " google" : ""), "data-rid": String(r.id) });
   let sys = null;
   const close = fn => { if (fn) fn(); card.remove(); if (sys) { try { sys.close(); } catch (e) {} } refresh(); };
   const label = isG ? "🗓️ Google Calendar" : isAl ? "⏰ Alarmă" : "🔔 Memento";
@@ -3748,8 +3755,10 @@ function showRemAlert(r, late) {
   if (!isNative) { showToast(r, late); return; }
   let box = byId("remAlert");
   if (!box) { box = el("div", { id: "remAlert" }); document.body.append(box); }
+  // v5.6: o alarmă apare o singură dată (înainte: o dată din verificarea aplicației și încă o dată din apăsarea pe notificare)
+  if (box.querySelector(`.remCard[data-rid="${r.id}"]`)) { box.style.display = "block"; return; }
   box.style.display = "block";
-  const card = el("div", { class: "remCard" });
+  const card = el("div", { class: "remCard", "data-rid": String(r.id) });
   const close = fn => {
     fn(); card.remove();
     if (!box.children.length) { box.style.display = "none"; remStopRing(); }
@@ -4589,6 +4598,12 @@ async function wipeLocalData() {
 //  La fiecare versiune nouă se adaugă un rând SUS în CHANGELOG.
 // ====================================================================
 const CHANGELOG = [
+  ["v5.6", "26.11.2026", [
+    "⏰ Când sună o alarmă și deschizi aplicația din notificare, alarma apare o singură dată (înainte apărea de două ori).",
+    "⚠️ Avertizarea „ai deja un memento asemănător” ține cont doar de cele care urmează să sune (nu de cele care au sunat deja), iar textele scurte cu un singur cuvânt comun („pc test” / „test 2”) nu mai sunt luate drept dubluri. Înainte, un „test 2” repetat nu se salva până nu apăsai „Salvează totuși”.",
+    "🎤 Am scos repornirea automată „vorbești, dar nu apare textul în 2,5 s”: tăia vorbirea și făcea bipuri în plus. Dacă Google se oprește imediat după pornire, reîncercarea e aproape instantă.",
+    "💻 Pe PC: la alarmele de peste câteva minute, aplicația îți amintește că telefonul sună doar după ce primește alarma (Planner deschis pe telefon)."
+  ]],
   ["v5.5", "25.11.2026", [
     "🎂 Zilele de naștere nu se mai numără la ⏰ Memento (nici pe tab, nici la „Toate”, nici în lista de 7 zile). Le vezi în 📁 Zile de naștere (cu numărul lor), în 📅 Calendar (🎂 pe zi) și la căutare.",
     "Fiecare persoană are o singură dată în calendar: ziua rămâne vizibilă până la miezul nopții, apoi se mută singură la aceeași dată, anul următor (fără să încarce Istoricul).",
