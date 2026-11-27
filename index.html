@@ -101,6 +101,10 @@ details.sgrp .sub{display:block;margin-top:16px;font-size:14px}
 .lcount{font-size:12px;color:var(--muted);background:#343b4d;border-radius:8px;padding:1px 7px}
 .lfile.open{outline:1px solid #3a4a6e}
 .item.hiNew{outline:2px solid var(--ok);transition:outline-color .3s}
+/* cuvinte cheie: butoane de bifat (zile înainte / după) */
+.kwOpts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.kwOpts button{margin:0;padding:6px 10px;border-radius:14px;background:var(--item);font-size:12px}
+.kwOpts button.on{background:var(--accent)}
 /* lista WhatsApp: un rând pe persoană */
 .waRow{display:flex;align-items:center;gap:6px;padding:7px 0;border-top:1px solid #343b4d;font-size:14px}
 .waRow:first-child{border-top:none}
@@ -473,6 +477,15 @@ body.native #ptr{top:42px}
       <p class="calHint">Dacă apeși 🎤 și nu apare text: așteaptă mesajul „🎙️ Ascult… vorbește”, apoi vorbește. Aplicația repornește singură microfonul dacă se blochează. Dacă tot nu merge, verifică să fie actualizată aplicația Google și să aibă permisiunea Microfon.</p>
       <b class="sub">🎤 Widget și scurtătură</b>
       <p class="calHint">Widget: apasă lung pe ecranul principal → Widgeturi → Secretara, apoi trage butonul „Dictează”. Scurtătură: apasă lung pe iconița aplicației → „Dictează”. Ambele deschid aplicația și pornesc microfonul.</p>
+    </details>
+
+    <details class="sgrp" data-g="kw">
+      <summary>🔑 Cuvinte cheie (anunțuri înainte / după)</summary>
+      <p class="calHint">Pentru fiecare cuvânt cheie (ex. <b>ITP</b>, <b>Rovinietă</b>, <b>Asigurare</b>, <b>RCA</b>) alegi când să fii anunțat în plus. Când dictezi sau scrii un memento / o alarmă care conține cuvântul (ex. „pe 15 decembrie alarmă ITP Dacia”), anunțurile se pun singure: înainte de termen, zilnic în ultimele zile și/sau după termen. Poți scrie mai multe forme ale aceluiași cuvânt, despărțite prin virgulă (ex. „Rovinietă, rovigneta”).</p>
+      <div id="kwList"></div>
+      <button class="doneBtn" onclick="kwAdd()">➕ Cuvânt cheie nou</button>
+      <button id="kwExBtn" onclick="kwExamples()">➕ Adaugă exemplele: ITP, Rovinietă, Asigurare, RCA</button>
+      <p id="kwInfo" class="calHint"></p>
     </details>
 
     <details class="sgrp" data-g="folders">
@@ -1327,7 +1340,7 @@ let idSeq = 0;
 const uid = () => Date.now() * 10 + (idSeq++ % 10);
 
 // ---------- copie automată în fișier: protejează datele la update / ștergerea memoriei WebView ----------
-const DATA_KEYS = ["tasks", "history", "reminders", "remHistory", "dict", "terms", "folders", "gcal", "waContacts"];
+const DATA_KEYS = ["tasks", "history", "reminders", "remHistory", "dict", "terms", "folders", "gcal", "waContacts", "kwRules"];
 const SETTING_KEYS = ["snap", "tts", "sndAlarm", "sndLen", "sndMemo", "confMode", "defTime", "histSub", "lastBackup", "ttsEngine", "ttsRate"];
 const MIRROR_FILES = [["secretara-date.json", "DATA"], ["Secretara/secretara-autobackup.json", "DOCUMENTS"]];
 // „proaspăt” = WebView-ul nu are nimic salvat (prima pornire sau date pierdute) → încercăm restaurarea automată
@@ -2334,6 +2347,115 @@ async function remCountdown(r, days) {
   }
   return made;
 }
+// ====================================================================
+//  v5.7: CUVINTE CHEIE – anunțuri în plus înainte / după termen (⚙️ Setări → 🔑 Cuvinte cheie)
+//  regulă: { id, word: "Rovinietă, rovigneta", before: [zile…], after: [zile…], daily: N (ultimele N zile, 0 = nu), type: "same"|"alarm"|"popup" }
+// ====================================================================
+const kwGet = () => arr(lsGet("kwRules", [])), kwSet = l => lsSet("kwRules", l);
+const KW_BEFORE = [[1, "−1 zi"], [2, "−2 zile"], [3, "−3 zile"], [5, "−5 zile"], [7, "−1 săpt."], [14, "−2 săpt."], [21, "−3 săpt."], [30, "−1 lună"]];
+const KW_AFTER = [[1, "+1 zi"], [2, "+2 zile"], [3, "+3 zile"], [7, "+1 săpt."], [14, "+2 săpt."]];
+const KW_DAILY = [[0, "Fără"], [3, "ultimele 3 zile"], [5, "ultimele 5 zile"], [7, "ultima săptămână"], [10, "ultimele 10 zile"], [14, "ultimele 2 săptămâni"]];
+const kwForms = rule => String(rule.word || "").split(",").map(s => normEq(s).replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim()).filter(Boolean);
+// regula al cărei cuvânt apare în text (ca cuvânt întreg; „ITP” prinde și „ITP-ul”, „rovinieta” și „rovinietei”)
+function kwMatch(text) {
+  const n = " " + normEq(baseText(String(text || ""))).replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim() + " ";
+  for (const r of kwGet()) {
+    for (const w of kwForms(r)) {
+      if (!w) continue;
+      if (n.includes(" " + w + " ")) return r;
+      if (w.length >= 5 && new RegExp(" " + w.replace(/[a]$/, "") + "[a-z]{0,4} ").test(n)) return r; // forme: rovinieta → rovinietei
+      if (w.length >= 2 && new RegExp(" " + w + "(?:ul|ului|uri|urilor) ").test(n)) return r;          // ITP → ITP-ul / ITP-ului
+    }
+  }
+  return null;
+}
+const kwDayTxt = k => k % 7 === 0 && k >= 7 ? (k === 7 ? "o săptămână" : k / 7 + " săptămâni") : k === 30 ? "o lună" : k === 1 ? "o zi" : k + " zile";
+function kwSummary(r) {
+  const b = (r.before || []).slice().sort((x, y) => y - x).map(k => "−" + kwDayTxt(k)).join(", ");
+  const a = (r.after || []).slice().sort((x, y) => x - y).map(k => "+" + kwDayTxt(k)).join(", ");
+  return [b && "înainte: " + b, r.daily ? "zilnic: ultimele " + r.daily + " zile" : "", a && "după: " + a].filter(Boolean).join(" · ") || "(nimic ales)";
+}
+// creează anunțurile în plus pentru memento-ul r (nu pentru repetitive, zile de naștere, serii, programe)
+async function kwApply(r) {
+  if (!r || r.repeat || r.bday || r.series || r.grp || r.kwOf) return null;
+  const rule = kwMatch(r.text); if (!rule) return null;
+  const type = rule.type === "alarm" || rule.type === "popup" ? rule.type : r.type;
+  const base = baseText(r.text), dd = new Date(r.due);
+  const term = `${pad2(dd.getDate())}.${pad2(dd.getMonth() + 1)}`;
+  const have = new Set(remGet().filter(x => x.series === r.id || x.kwOf === r.id).map(x => dkey(new Date(x.due))));
+  const made = [], now = Date.now() + 5000;
+  const add = async (k, text, extra) => {
+    const d = new Date(r.due); d.setDate(d.getDate() + k);
+    if (d.getTime() <= now || have.has(dkey(d))) return;
+    have.add(dkey(d));
+    made.push(await createReminder(text, d.getTime(), type, null, r.cat != null ? r.cat : null, extra));
+  };
+  // înainte (și zilnic în ultimele N zile): în seria termenului → în Memento apare doar următorul, toate în Calendar
+  const days = new Set(rule.before || []);
+  for (let k = 1; k <= (+rule.daily || 0); k++) days.add(k);
+  for (const k of [...days].sort((x, y) => y - x))
+    await add(-k, `⏳ ${k === 1 ? "Mâine" : k % 7 === 0 ? `Peste ${kwDayTxt(k)}` : `Mai sunt ${k} zile`}: ${base} (termen ${term})`, { series: r.id, kw: true });
+  // după termen: memento-uri separate (rămân și după ce bifezi termenul)
+  for (const k of (rule.after || []).slice().sort((x, y) => x - y))
+    await add(k, `🔁 La ${kwDayTxt(k)} după termen: ${base} (termen ${term})`, { kwOf: r.id, kw: true });
+  return { rule, made };
+}
+const kwNote = res => res && res.made.length ? `🔑 ${String(res.rule.word).split(",")[0].trim()}: încă ${res.made.length} ${res.made.length === 1 ? "anunț" : "anunțuri"} (${kwSummary(res.rule)}).` : "";
+// ---------- Setări: listă compactă + editare ----------
+let kwEditId = null;
+function renderKw() {
+  const list = byId("kwList"); if (!list) return;
+  list.replaceChildren();
+  const l = kwGet();
+  byId("kwExBtn").hidden = ["itp", "rovinieta", "asigurare", "rca"].every(w => l.some(r => kwForms(r).includes(w)));
+  if (!l.length) list.append(hint("Niciun cuvânt cheie. Apasă „➕ Cuvânt cheie nou” sau adaugă exemplele."));
+  l.forEach(r => list.append(r.id === kwEditId ? kwEditor(r) : el("div", { class: "waRow" }, [
+    el("span", { class: "wn" }, ["🔑 " + (r.word || "(fără nume)"), el("small", { text: kwSummary(r) })]),
+    el("button", { text: "✏️", title: "Editează", onclick: () => { kwEditId = r.id; renderKw(); } }),
+    el("button", { class: "deleteBtn", text: "🗑️", title: "Șterge", onclick: () => { if (!confirm(`Ștergi cuvântul cheie „${r.word}”? (memento-urile deja puse rămân)`)) return; kwSet(kwGet().filter(x => x.id !== r.id)); renderKw(); } })
+  ])));
+}
+function kwEditor(r) {
+  const st = { before: new Set(r.before || []), after: new Set(r.after || []) };
+  const word = el("input", { type: "text", placeholder: "Cuvânt cheie (ex. ITP sau „Rovinietă, rovigneta”)" }); word.value = r.word || "";
+  const opts = (vals, set) => el("div", { class: "kwOpts" }, vals.map(([k, lab]) => {
+    const b = el("button", { class: set.has(k) ? "on" : "", text: lab });
+    b.addEventListener("click", () => { set.has(k) ? set.delete(k) : set.add(k); b.classList.toggle("on", set.has(k)); });
+    return b;
+  }));
+  const daily = el("select", {}, KW_DAILY.map(([k, lab]) => el("option", { value: String(k), text: lab }))); daily.value = String(r.daily || 0);
+  const type = el("select", {}, [el("option", { value: "same", text: "La fel ca memento-ul / alarma spusă" }), el("option", { value: "alarm", text: "⏰ Alarme (sună)" }), el("option", { value: "popup", text: "🔔 Memento-uri (notificare)" })]);
+  type.value = r.type || "same";
+  const save = () => {
+    const l = kwGet(), x = l.find(y => y.id === r.id); if (!x) return;
+    x.word = word.value.trim(); x.before = [...st.before]; x.after = [...st.after]; x.daily = +daily.value || 0; x.type = type.value;
+    if (!x.word) { alert("Scrie cuvântul cheie."); return; }
+    kwSet(l); kwEditId = null; byId("kwInfo").textContent = `✅ Salvat: ${x.word} – ${kwSummary(x)}`; renderKw();
+  };
+  setTimeout(() => { if (!word.value) word.focus(); }, 50);
+  return el("div", { class: "fcard" }, [
+    word,
+    el("b", { class: "sub", text: "📅 Anunță-mă înainte de termen" }), opts(KW_BEFORE, st.before),
+    el("label", { class: "lbl", text: "🔁 Și zilnic în" }), daily,
+    el("b", { class: "sub", text: "📅 Anunță-mă și după termen" }), opts(KW_AFTER, st.after),
+    el("label", { class: "lbl", text: "Anunțurile în plus sunt" }), type,
+    el("div", { class: "row" }, [
+      el("button", { class: "doneBtn", text: "💾 Salvează", onclick: save }),
+      el("button", { text: "Închide", onclick: () => { const x = kwGet().find(y => y.id === r.id); if (x && !x.word) kwSet(kwGet().filter(y => y.id !== r.id)); kwEditId = null; renderKw(); } })
+    ])
+  ]);
+}
+function kwAdd() { const l = kwGet(), r = { id: uid(), word: "", before: [7, 1], after: [], daily: 0, type: "same" }; l.push(r); kwSet(l); kwEditId = r.id; renderKw(); }
+function kwExamples() {
+  const l = kwGet(); let n = 0;
+  [["ITP", [30, 7, 1], 0], ["Rovinietă, rovigneta, rovinieta", [7, 1], 0], ["Asigurare, asigurarea", [14, 7, 1], 0], ["RCA", [14, 7, 1], 3]].forEach(([w, before, daily]) => {
+    const f = normEq(w.split(",")[0]).trim();
+    if (l.some(r => kwForms(r).includes(f))) return;
+    l.push({ id: uid(), word: w, before, after: [], daily, type: "same" }); n++;
+  });
+  kwSet(l); byId("kwInfo").textContent = n ? `✅ Am adăugat ${n} cuvinte cheie. Apasă ✏️ ca să alegi zilele care îți trebuie.` : "Exemplele există deja."; renderKw();
+}
+
 function seriesStop(sid) {
   const l = remGet(), kids = l.filter(x => x.series === sid);
   if (!kids.length || !confirm(`Oprești memento-urile zilnice rămase (${kids.length})? Termenul principal rămâne.`)) return;
@@ -2416,12 +2538,12 @@ function remSnooze(id, min) {
 }
 function remDelete(id, withSeries) {
   const l = remGet(), r = l.find(x => x.id === id);
-  const kids = l.filter(x => x.series === id);
+  const kids = l.filter(x => x.series === id || x.kwOf === id); // v5.7: și anunțurile „după termen” de la cuvintele cheie
   let drop = false;
-  if (kids.length) drop = withSeries || confirm(`Ștergi și cele ${kids.length} memento-uri zilnice până la acest termen?`);
+  if (kids.length) drop = withSeries || confirm(`Ștergi și cele ${kids.length} anunțuri legate de acest termen (înainte / după)?`);
   if (r) cancelNative(r);
   if (drop) kids.forEach(k => cancelNative(k));
-  remSet(l.filter(x => x.id !== id && !(drop && x.series === id)));
+  remSet(l.filter(x => x.id !== id && !(drop && (x.series === id || x.kwOf === id))));
   refresh();
 }
 const REP_LABEL = { daily: "🔁 zilnic", weekly: "🔁 săptămânal", monthly: "🔁 lunar", yearly: "🔁 anual" };
@@ -2676,6 +2798,7 @@ async function createMany(parts, forcedType, force) {
     made.push(r);
     const sd = seriesDays(p, r.due);
     if (sd) made.push(...await remCountdown(r, sd));
+    const kwRes = await kwApply(r); if (kwRes) made.push(...kwRes.made); // v5.7: cuvinte cheie
   }
   clearBox();
   byId("lastMem").replaceChildren(el("div", { class: "item okbox" }, [
@@ -2745,6 +2868,8 @@ async function createOne(p, type, force, weekendDone) {
     if (made.length) notes.push(`📆 Și zilnic până la termen: ${made.length} memento-uri, ${fmtDT(made[0].due)} → ${fmtDT(made[made.length - 1].due)}.`);
     else notes.push("📆 Zilele dinainte de termen sunt deja în trecut.");
   }
+  const kwRes = await kwApply(r); // v5.7: cuvinte cheie (ITP, RCA …) → anunțuri în plus
+  if (kwRes) notes.push(kwNote(kwRes) || `🔑 ${String(kwRes.rule.word).split(",")[0].trim()}: zilele alese sunt deja în trecut.`);
   showLast(r, notes.join(" "));
   openView("mem");
   confirmFx(false);
@@ -3415,9 +3540,10 @@ async function addReminder() {
   }
   byId("remText").value = "";
   calSel = dkey(new Date(due)); const d = new Date(due); calY = d.getFullYear(); calM = d.getMonth();
-  await createReminder(text, due, byId("remType").value, repeat);
+  const nr = await createReminder(text, due, byId("remType").value, repeat);
+  const kwRes = await kwApply(nr); // v5.7: cuvinte cheie
   if (due > Date.now()) confirmFx(false);
-  msg.textContent = due < Date.now() ? "Salvat, dar ora e în trecut." : "Salvat pentru " + fmtDT(due) + (isNative ? " (alarmă programată în telefon)." : " (în browser sună doar cu pagina deschisă).");
+  msg.textContent = (due < Date.now() ? "Salvat, dar ora e în trecut." : "Salvat pentru " + fmtDT(due) + (isNative ? " (alarmă programată în telefon)." : " (în browser sună doar cu pagina deschisă).")) + (kwRes ? " " + kwNote(kwRes) : "");
 }
 
 // ====================================================================
@@ -3472,6 +3598,7 @@ function dictOptChanged() {
 }
 function renderSettings() {
   renderFolders();
+  renderKw();
   { const w = byId("weekendCb"); if (w) w.checked = weekendAskOn(); }
   renderWa();
   byId("setInfo").textContent = isNative
@@ -3504,7 +3631,7 @@ function renderSettings() {
   if (isNative) gcRenderCals(); else bkRender();
   syncRender(); syncEnsure();
 }
-const APP_VER = "v5.6 · 26.11.2026";
+const APP_VER = "v5.7 · 27.11.2026";
 async function sndChanged() {
   lsSetRaw("sndAlarm", byId("sndAlarm").value);
   lsSetRaw("sndLen", byId("sndLen").value);
@@ -4598,6 +4725,11 @@ async function wipeLocalData() {
 //  La fiecare versiune nouă se adaugă un rând SUS în CHANGELOG.
 // ====================================================================
 const CHANGELOG = [
+  ["v5.7", "27.11.2026", [
+    "🔑 ⚙️ Setări → Cuvinte cheie: pentru cuvinte ca ITP, Rovinietă, Asigurare, RCA alegi când să fii anunțat în plus: înainte (−1/−2/−3/−5 zile, −1/−2/−3 săptămâni, −1 lună), zilnic în ultimele zile și/sau după termen (+1/+2/+3 zile, +1/+2 săptămâni), ca alarme sau memento-uri.",
+    "Când dictezi sau scrii un memento / o alarmă cu un cuvânt cheie (ex. „pe 20 decembrie la 9 alarmă ITP Dacia”), anunțurile se pun singure; cardul de confirmare îți spune câte. Recunoaște și forme ca „ITP-ul”, „rovignetei”, „asigurarea”.",
+    "În Memento apare doar următorul anunț dinaintea termenului; toate se văd în 📅 Calendar. Ștergerea termenului întreabă dacă le ștergi și pe cele legate."
+  ]],
   ["v5.6", "26.11.2026", [
     "⏰ Când sună o alarmă și deschizi aplicația din notificare, alarma apare o singură dată (înainte apărea de două ori).",
     "⚠️ Avertizarea „ai deja un memento asemănător” ține cont doar de cele care urmează să sune (nu de cele care au sunat deja), iar textele scurte cu un singur cuvânt comun („pc test” / „test 2”) nu mai sunt luate drept dubluri. Înainte, un „test 2” repetat nu se salva până nu apăsai „Salvează totuși”.",
